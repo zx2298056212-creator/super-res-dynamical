@@ -1,70 +1,66 @@
-import tensorflow as tf
 import os
+os.environ["KERAS_BACKEND"] = "jax"
 
-import models  
-import data_read_v2 as reader 
+import jax
+import jax.numpy as jnp
+import numpy as np
+from functools import partial 
 
-# Define constants
+import keras
+import jax_cfd.base as cfd
+import jax_cfd.spectral as spectral
+
+import models
+import time_stepping as ts
+import loss as lf
+
+
+# setup problem and create grid
+Lx = 2 * jnp.pi
+Ly = 2 * jnp.pi
 Nx = 128
 Ny = 128
-m = 128
-norm_factor = 60
-batch_size = 64
-num_epochs = 500
-lr = 1e-3
-file_loc = 'gs://whirl_turbulence_cambridge/Re_400_whirl_01_27_2023/*'
-model_dir = '/home/jp789/autoencoders_2023/models'
-model_weight_name = 'weights_DNv7a5_Re400_m'+str(m)+'_lr'+str(lr)+'_epoch{epoch:04d}'
-model_weight_path = os.path.join(model_dir, model_weight_name)
+Re = 40.
+vort_max = 25. # used to normalize fields in training 
+T_unroll = 5.
 
-# Create a MirroredStrategy for distributing across GPUs
-strategy = tf.distribute.MirroredStrategy()
+# data location 
+data_loc = '/Users/jpage2/code/jax-cfd-data-gen/Re40test/'
+file_front = 'vort_traj.'
+files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(1000)]
 
-# Define custom loss function
-def mse_and_vortsq_loss(vort_true, vort_pred):
-  mse = tf.losses.mean_squared_error(vort_true, vort_pred)
-  vort_true_sq = tf.square(vort_true)
-  vort_pred_sq = tf.square(vort_pred)
-  mse_vort_sq = tf.reduce_mean(tf.square(vort_true_sq - vort_pred_sq))
-  loss = 0.5 * mse + 0.5 * mse_vort_sq
-  return loss
+# define uniform grid 
+grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
 
-# Define learning rate schedule [has made some impact even with Adam in AE] 
-def lr_schedule(epoch, initial_lr):
-  return initial_lr 
-  #if epoch < 100:
-  #  return initial_lr
-  #elif epoch < 250:
-  #  return 0.1 * initial_lr
-  #else:
-  #  return 0.01 * initial_lr
+# estimate stable time step based on a "max velocity" using CFL condition
+max_vel_est = 5.
+dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1./Re, grid) / 2.
 
-# Load and compile model inside strategy scope 
-with strategy.scope():
-  dataset_dict = reader.read_xarray_tfdata_glob(file_loc, batch_size, 'complete', norm_factor, train_frac=0.9)
-  model = models.ae_densenet_v7(Nx, Ny, m)
-  model.compile(
-      optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-      loss=mse_and_vortsq_loss, #'mse',
-      metrics=[tf.keras.losses.MeanSquaredError()]
-  )
-print("LOADING DONE!")
+# generate a trajectory function
+trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid)
 
-# Define callbacks
-callbacks = [
-      tf.keras.callbacks.ModelCheckpoint(
-          model_weight_path, save_weights_only=True,
-          save_best_only=True),
-      tf.keras.callbacks.TensorBoard(log_dir=model_dir),
-      tf.keras.callbacks.LearningRateScheduler(lambda epoch: lr_schedule(epoch, lr))
-  ]
+# wrap trajectory function with FFTs to enable physical space -> physical space map
+def real_to_real_traj_fn(vort_phys, traj_fn):
+  vort_rft = jnp.fft.rfftn(vort_phys)
+  _, traj_rft = traj_fn(vort_rft)
+  traj_phys = jnp.fft.irfftn(traj_rft, axes=(1,2))
+  return traj_phys
 
+real_traj_fn = partial(real_to_real_traj_fn, traj_fn=trajectory_fn)
+loss_fn = jax.jit(partial(lf.mse_and_traj, trajectory_rollout_fn=real_traj_fn))
 
-# Train model
-with strategy.scope():
-  history = model.fit(
-      dataset_dict['train'],
-      epochs=num_epochs,
-      steps_per_epoch=dataset_dict['num_train_samples'] // batch_size,
-      validation_data=dataset_dict['val'],
-      callbacks=callbacks)
+# load training data
+# TODO restore functionality with keras dataset
+training_data = [np.load(file_name) for file_name in files]
+training_data_ar = np.concatenate(training_data, axis=0) / vort_max
+
+# build model
+ae_model = models.ae_densenet_v7(Nx, Ny, 128)
+ae_model.compile(
+    optimizer=keras.optimizers.Adam(learning_rate=5e-4),
+    loss=loss_fn, 
+    metrics=[keras.losses.MeanSquaredError()]
+)
+
+# train model 
+ae_model.fit(training_data_ar, training_data_ar, batch_size=16, epochs=100)
