@@ -22,12 +22,12 @@ Nx = 128
 Ny = 128
 Re = 40.
 vort_max = 25. # used to normalize fields in training 
-T_unroll = 5.
+T_unroll = 2.5
 
 # data location 
-data_loc = '/Users/jpage2/code/jax-cfd-data-gen/Re40test/'
+data_loc = '/home/jacob/code/jax-cfd-data-gen/Re40test/'
 file_front = 'vort_traj.'
-files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(1000)]
+files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(100)]
 
 # define uniform grid 
 grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
@@ -37,7 +37,7 @@ max_vel_est = 5.
 dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1./Re, grid) / 2.
 
 # generate a trajectory function
-trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid)
+trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=0.5)
 
 # wrap trajectory function with FFTs to enable physical space -> physical space map
 def real_to_real_traj_fn(vort_phys, traj_fn):
@@ -46,7 +46,7 @@ def real_to_real_traj_fn(vort_phys, traj_fn):
   traj_phys = jnp.fft.irfftn(traj_rft, axes=(1,2))
   return traj_phys
 
-real_traj_fn = partial(real_to_real_traj_fn, traj_fn=trajectory_fn)
+real_traj_fn = jax.vmap(partial(real_to_real_traj_fn, traj_fn=trajectory_fn))
 loss_fn = jax.jit(partial(lf.mse_and_traj, trajectory_rollout_fn=real_traj_fn))
 
 # load training data
@@ -56,11 +56,18 @@ training_data_ar = np.concatenate(training_data, axis=0) / vort_max
 
 # build model
 ae_model = models.ae_densenet_v7(Nx, Ny, 128)
+
+# train a few epochs on standard MSE prior to unrolling
+ae_model.compile(
+    optimizer=keras.optimizers.Adam(learning_rate=5e-4),
+    loss='mse', 
+    metrics=[keras.losses.MeanSquaredError()]
+)
+ae_model.fit(training_data_ar, training_data_ar, batch_size=16, epochs=1)
+# now use full loss 
 ae_model.compile(
     optimizer=keras.optimizers.Adam(learning_rate=5e-4),
     loss=loss_fn, 
     metrics=[keras.losses.MeanSquaredError()]
 )
-
-# train model 
 ae_model.fit(training_data_ar, training_data_ar, batch_size=16, epochs=100)
