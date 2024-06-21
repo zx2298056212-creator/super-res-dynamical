@@ -14,4 +14,4 @@ def mse_and_traj(
   true_traj = trajectory_rollout_fn(vort_true * vort_max)
   pred_traj = trajectory_rollout_fn(vort_pred * vort_max)
   squared_errors_traj = (true_traj / vort_max - pred_traj / vort_max) ** 2
-  return jnp.mean(squared_errors_recon) + jnp.mean(squared_errors_traj)
+  return 0.5 * jnp.mean(squared_errors_recon) + 0.5 * jnp.mean(squared_errors_traj)

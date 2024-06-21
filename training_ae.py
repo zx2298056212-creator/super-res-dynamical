@@ -41,7 +41,7 @@ trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, 
 
 # wrap trajectory function with FFTs to enable physical space -> physical space map
 def real_to_real_traj_fn(vort_phys, traj_fn):
-  vort_rft = jnp.fft.rfftn(vort_phys)
+  vort_rft = jnp.fft.rfftn(vort_phys, axes=(1,2))
   _, traj_rft = traj_fn(vort_rft)
   traj_phys = jnp.fft.irfftn(traj_rft, axes=(1,2))
   return traj_phys
