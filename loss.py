@@ -2,8 +2,8 @@ import jax.numpy as jnp
 from typing import Callable
 
 def mse_and_traj(
-    vort_true: jnp.ndarray, 
     vort_pred: jnp.ndarray, 
+    vort_true: jnp.ndarray, 
     trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vort_max: float=25.
     ):

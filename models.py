@@ -1,8 +1,9 @@
 """ Attempt to convert old tf keras model to jax backend """
+import keras
 import keras.backend as K
 import keras.ops as kops
 from keras.layers import Conv2D, Lambda
-from keras.layers import Input, MaxPooling2D, Flatten, Dense, Reshape, UpSampling2D, AveragePooling2D
+from keras.layers import Input, MaxPooling2D, UpSampling2D
 from keras.layers import BatchNormalization, Concatenate, Activation
 
 from keras.models import Model
@@ -196,3 +197,46 @@ def ae_densenet_v7(Nx, Ny, encoded_dim, return_encoder_decoder=False):
     return Model(input_vort, decoder_outputs[0]), encoder_model, Model(decoder_inputs[1], decoder_outputs[1])
   else:
     return Model(input_vort, decoder_outputs[0])
+
+def residual_block_periodic_conv(x, n_filters,
+                                 kernel=(1,1), strides=(1,1),
+                                 n_pad_rows=1, n_pad_cols=1,
+                                 activation='gelu'):
+  layer_input = x 
+
+  # number of filters must match input = x.shape[-1]
+  n_filters = x.shape[-1]
+
+  x = BatchNormalization()(x)
+  x = Activation(activation)(x)
+
+  x = periodic_convolution(x, n_filters, kernel, strides=strides,
+                           n_pad_rows=n_pad_rows, n_pad_cols=n_pad_cols, activation=activation)
+  
+  x = BatchNormalization()(x)
+
+  x = periodic_convolution(x, n_filters, kernel, strides=strides,
+                           n_pad_rows=n_pad_rows, n_pad_cols=n_pad_cols, activation='linear')
+
+  x = keras.layers.add([x, layer_input])
+  return x
+
+def super_res_v0(Nx_coarse, Ny_coarse, N_filters, N_grow=4):
+  """ Build a model to perform super-resolution, scaling up N_grow times.  """
+  input_vort = Input(shape=(Nx_coarse, Ny_coarse, 1))
+   
+  # an initial linear layer prior to Residual blocks 
+  x = periodic_convolution(input_vort, N_filters, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  
+  # upsample and apply residual block however many times we need to rescale 
+  # note we are keeping our kernel constant size -- perhaps not ideal
+  # might want to scale this too 
+  for _ in range(N_grow):
+    x = UpSampling2D((2,2))(x)
+    x = residual_block_periodic_conv(x, N_filters, kernel=(4,4),
+                                     n_pad_rows=3, n_pad_cols=3)
+  
+  x = periodic_convolution(x, 1, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  return Model(input_vort, x)
