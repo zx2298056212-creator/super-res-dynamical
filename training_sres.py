@@ -8,11 +8,12 @@ import numpy as np
 import keras
 from keras.callbacks import ModelCheckpoint
 import jax_cfd.base as cfd
-import jax_cfd.spectral as spectral
 
-from typing import Callable
+from functools import partial
 
 import models
+import time_stepping as ts
+import loss as lf
 
 # setup problem and create grid
 Lx = 2 * jnp.pi
@@ -54,7 +55,6 @@ vort_snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis]
 np.random.shuffle(vort_snapshots)
 
 vort_snapshots_coarse = average_pool_trajectory(vort_snapshots, filter_size, filter_size)
-
 print(vort_snapshots.shape, vort_snapshots_coarse.shape)
 
 # TODO compute N_grow above given filter size and Nx
@@ -76,3 +76,28 @@ super_model.compile(
 super_model.fit(vort_snapshots_coarse, vort_snapshots, 
                 callbacks=[checkpoint_callback],
                 batch_size=16, validation_split=0.1, epochs=50)
+
+
+# now let's try and use our new loss
+T_unroll = 2.5
+
+# generate a trajectory function
+dt_stable = np.round(dt_stable, 3)
+trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=0.5)
+
+# wrap trajectory function with FFTs to enable physical space -> physical space map
+def real_to_real_traj_fn(vort_phys, traj_fn):
+  vort_rft = jnp.fft.rfftn(vort_phys, axes=(1,2))[...,0]
+  _, traj_rft = traj_fn(vort_rft)
+  traj_phys = jnp.fft.irfftn(traj_rft, axes=(1,2))[...,jnp.newaxis]
+  return traj_phys
+
+real_traj_fn = partial(real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
+loss_fn = jax.jit(partial(lf.mse_and_traj, trajectory_rollout_fn=real_traj_fn, vort_max=1.))
+
+super_model.compile(
+    optimizer=keras.optimizers.Adam(learning_rate=5e-4),
+    loss=loss_fn, 
+    metrics=[keras.losses.MeanSquaredError()]
+)
+super_model.fit(vort_snapshots_coarse, vort_snapshots, batch_size=16, epochs=5)
