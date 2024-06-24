@@ -55,7 +55,7 @@ loss_fn = jax.jit(partial(lf.mse_and_traj, trajectory_rollout_fn=real_traj_fn))
 # load training data
 # TODO restore functionality with keras dataset
 training_data = [np.load(file_name) for file_name in files]
-training_data_ar = np.concatenate(training_data, axis=0) / vort_max
+training_data_ar = np.concatenate(training_data, axis=0)[..., np.newaxis] / vort_max
 
 # build model
 ae_model = models.ae_densenet_v7(Nx, Ny, 128)
