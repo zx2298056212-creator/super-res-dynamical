@@ -74,7 +74,6 @@ super_model.compile(
     metrics=[keras.losses.MeanSquaredError()]
 )
 super_model.fit(vort_snapshots_coarse, vort_snapshots, 
-                callbacks=[checkpoint_callback],
                 batch_size=16, validation_split=0.1, epochs=50)
 
 
@@ -87,17 +86,32 @@ trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, 
 
 # wrap trajectory function with FFTs to enable physical space -> physical space map
 def real_to_real_traj_fn(vort_phys, traj_fn):
+  # FT of space and select first (only) channel
   vort_rft = jnp.fft.rfftn(vort_phys, axes=(1,2))[...,0]
   _, traj_rft = traj_fn(vort_rft)
-  traj_phys = jnp.fft.irfftn(traj_rft, axes=(1,2))[...,jnp.newaxis]
+  # axes for FT move back because we now also have time dimension; add channel
+  traj_phys = jnp.fft.irfftn(traj_rft, axes=(2,3))[...,jnp.newaxis]
   return traj_phys
 
 real_traj_fn = partial(real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
-loss_fn = jax.jit(partial(lf.mse_and_traj, trajectory_rollout_fn=real_traj_fn, vort_max=1.))
+
+# now batch the pooling fn
+pooling_fn_batched = jax.vmap(partial(pooling_fn, 
+                                      pool_width=filter_size, 
+                                      pool_height=filter_size))
+
+loss_fn = jax.jit(partial(lf.mse_and_traj_coarse, 
+                          trajectory_rollout_fn=real_traj_fn, 
+                          pooling_fn=pooling_fn_batched))
 
 super_model.compile(
     optimizer=keras.optimizers.Adam(learning_rate=5e-4),
     loss=loss_fn, 
     metrics=[keras.losses.MeanSquaredError()]
 )
-super_model.fit(vort_snapshots_coarse, vort_snapshots, batch_size=16, epochs=5)
+super_model.fit(vort_snapshots_coarse, 
+                vort_snapshots, 
+                validation_split=0.1,
+                callbacks=[checkpoint_callback], 
+                batch_size=16, 
+                epochs=5)

@@ -7,8 +7,8 @@ import numpy as np
 from functools import partial 
 
 import keras
+from keras.callbacks import ModelCheckpoint
 import jax_cfd.base as cfd
-import jax_cfd.spectral as spectral
 
 import models
 import time_stepping as ts
@@ -42,9 +42,11 @@ trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, 
 
 # wrap trajectory function with FFTs to enable physical space -> physical space map
 def real_to_real_traj_fn(vort_phys, traj_fn):
+  # FT of space and select first (only) channel
   vort_rft = jnp.fft.rfftn(vort_phys, axes=(1,2))[...,0]
   _, traj_rft = traj_fn(vort_rft)
-  traj_phys = jnp.fft.irfftn(traj_rft, axes=(1,2))[...,jnp.newaxis]
+  # axes for FT move back because we now also have time dimension; add channel
+  traj_phys = jnp.fft.irfftn(traj_rft, axes=(2,3))[...,jnp.newaxis]
   return traj_phys
 
 real_traj_fn = partial(real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
@@ -58,17 +60,34 @@ training_data_ar = np.concatenate(training_data, axis=0) / vort_max
 # build model
 ae_model = models.ae_densenet_v7(Nx, Ny, 128)
 
+checkpoint_callback = ModelCheckpoint(
+    filepath='weights/sr_test_epoch_{epoch:02d}.weights.h5',
+    save_weights_only=True,
+    save_best_only=True,
+    verbose=1
+)
+
 # train a few epochs on standard MSE prior to unrolling
 ae_model.compile(
     optimizer=keras.optimizers.Adam(learning_rate=5e-4),
     loss='mse', 
     metrics=[keras.losses.MeanSquaredError()]
 )
-ae_model.fit(training_data_ar, training_data_ar, batch_size=16, epochs=1)
+ae_model.fit(training_data_ar, 
+             training_data_ar, 
+             batch_size=16, 
+             validation_split=0.1,
+             epochs=25)
+
 # now use full loss 
 ae_model.compile(
     optimizer=keras.optimizers.Adam(learning_rate=5e-4),
     loss=loss_fn, 
     metrics=[keras.losses.MeanSquaredError()]
 )
-ae_model.fit(training_data_ar, training_data_ar, batch_size=16, epochs=100)
+ae_model.fit(training_data_ar, 
+             training_data_ar, 
+             validation_split=0.1,
+             callbacks=[checkpoint_callback], 
+             batch_size=16, 
+             epochs=100)
