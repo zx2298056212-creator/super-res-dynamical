@@ -1,47 +1,24 @@
 """ To do: convert to jax-based data augmentation """
 import tensorflow as tf
+import numpy as np
+import jax.numpy as jnp
 
-def translate_x(x: tf.Tensor) -> tf.Tensor:
-  """
-  Translation (x) augmentation.
+from typing import Union
+Array = Union[np.ndarray, jnp.ndarray]
 
-  Args:
-    x: greyscale vorticity image
+def translate_x(omega: Array) -> Array:
+  Nx, _ = omega.shape[:2]
+  shift = np.random.randint(0, Nx)
+  omega_translated = np.roll(omega, shift, axis=0)
+  return omega_translated
 
-  Returns:
-    An augmented image.
-  """
-  nx, _ = x.shape
-  shift = tf.random.uniform(shape=[], minval=0, maxval=nx-1, dtype=tf.int32)
+def shift_reflect_y(omega: Array) -> Array:
+  _, Ny = omega.shape[:2]
+  shift = np.random.randint(0, 8)
 
-  x = tf.roll(x, shift, 1)
-  return x
-
-def shift_reflect_y(x): #: tf.Tensor) -> tf.Tensor:
-  """ 
-  Shift-reflect (y) augmentation.
-
-  Args:
-    x: greyscale vorticity image
-
-  Returns:
-    augmented image
-  """
-  Nx, Ny = x.shape
-  shift = tf.random.uniform(shape=[], minval=0, maxval=7, dtype=tf.int32)
-  
   for j in range(shift):
-    x = -tf.reverse(x, tf.convert_to_tensor([1, 0], dtype=tf.int32)) 
-
+    omega = -np.flip(omega, axis=1)
+  
   shift *= Ny // 8
-  x = tf.roll(x, shift, 0)
-  return x
-
-def augment(image_input):
-  image = tf.reshape(image_input, (128, 128))
-  image = shift_reflect_y(image)
-  image = translate_x(image)
-  #image = rotate_pi(image)
-  image = tf.reshape(image, [128, 128, 1])
-  image_input = image
-  return image_input
+  omega_shift_ref = np.roll(omega, shift, axis=1)
+  return omega_shift_ref
