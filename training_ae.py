@@ -13,6 +13,7 @@ import jax_cfd.base as cfd
 import models
 import time_stepping as ts
 import loss as lf
+import interact_model as im
 
 
 # setup problem and create grid
@@ -40,16 +41,7 @@ dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1./Re, grid) / 2.
 dt_stable = np.round(dt_stable, 3)
 trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=0.5)
 
-# wrap trajectory function with FFTs to enable physical space -> physical space map
-def real_to_real_traj_fn(vort_phys, traj_fn):
-  # FT of space and select first (only) channel
-  vort_rft = jnp.fft.rfftn(vort_phys, axes=(1,2))[...,0]
-  _, traj_rft = traj_fn(vort_rft)
-  # axes for FT move back because we now also have time dimension; add channel
-  traj_phys = jnp.fft.irfftn(traj_rft, axes=(2,3))[...,jnp.newaxis]
-  return traj_phys
-
-real_traj_fn = partial(real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
+real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
 loss_fn = jax.jit(partial(lf.mse_and_traj, trajectory_rollout_fn=real_traj_fn))
 
 # load training data
