@@ -7,11 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import keras
-from keras.callbacks import ModelCheckpoint
 import jax_cfd.base as cfd
-
-# need tensorflow for tf.data
-import tensorflow as tf 
 
 from functools import partial
 
@@ -89,8 +85,6 @@ for n in range(n_mse_steps):
   if current_val_loss < min_val_loss:
     min_val_loss = current_val_loss
     super_model.save_weights('weights/sr_best_MSE.weights.h5')
-
-
 
 # generate a trajectory function
 dt_stable = np.round(dt_stable, 3)

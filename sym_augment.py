@@ -16,7 +16,7 @@ def shift_reflect_y(omega: Array) -> Array:
   _, Ny = omega.shape[:2]
   shift = np.random.randint(0, 8)
 
-  for j in range(shift):
+  for _ in range(shift):
     omega = -np.flip(omega, axis=1)
   
   shift *= Ny // 8
