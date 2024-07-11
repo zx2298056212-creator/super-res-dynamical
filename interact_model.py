@@ -19,3 +19,13 @@ def average_pool_trajectory(omega_traj, pool_width, pool_height):
   )
   omega_pooled_traj = omega_reshaped.mean(axis=(2, 4))
   return omega_pooled_traj
+
+def coarse_pool_trajectory(omega_traj, pool_width, pool_height):
+  _, Nx, Ny, _ = omega_traj.shape
+  assert Nx % pool_width == 0
+  assert Ny % pool_height == 0
+  coarse_x = pool_width
+  coarse_y = pool_height
+
+  omega_pooled_traj = omega_traj[:, ::coarse_x, ::coarse_y, :]
+  return omega_pooled_traj
