@@ -7,7 +7,11 @@ import jax.numpy as jnp
 import numpy as np
 
 import keras
+from keras.callbacks import ModelCheckpoint
 import jax_cfd.base as cfd
+
+# need tensorflow for tf.data
+import tensorflow as tf 
 
 from functools import partial
 
@@ -24,9 +28,9 @@ Nx = 128
 Ny = 128
 Re = 100. 
 
-filter_size = 16 # how large are we average pooling?
-T_unroll = 1.5 # how far to unroll
-t_substep = 0.25
+filter_size = 8 # how large are we average pooling?
+T_unroll = 2.5 # how far to unroll
+t_substep = 0.1
 
 # hyper parameters
 batch_size = 32
@@ -34,7 +38,7 @@ lr = 5e-4
 nval = 5000
 
 # training configuration
-n_mse_steps = 100
+n_mse_steps = 25
 n_traj_steps = 100
 
 
@@ -55,10 +59,10 @@ vort_snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis]
 np.random.shuffle(vort_snapshots)
 vort_train = vort_snapshots[:-nval]
 vort_val = vort_snapshots[-nval:]
-vort_val_coarse = im.average_pool_trajectory(vort_val, filter_size, filter_size)
+vort_val_coarse = im.coarse_pool_trajectory(vort_val, filter_size, filter_size)
 
 # TODO compute N_grow above given filter size and Nx
-super_model = models.super_res_v0(Nx // filter_size, Ny // filter_size, 32, N_grow=4)
+super_model = models.super_res_v0(Nx // filter_size, Ny // filter_size, 32, N_grow=3)
 
 # train a few epochs on standard MSE prior to unrolling
 super_model.compile(
@@ -74,9 +78,9 @@ for n in range(n_mse_steps):
   print("MSE step: ", n)
   # data augmentation at each iteration through the data (a fudge due to issues with jax/tf map compat)
   vort_train = np.array([sa.translate_x(sa.shift_reflect_y(omega)) for omega in vort_train])
-  vort_train_coarse = im.average_pool_trajectory(vort_train, filter_size, filter_size)
+  vort_train_coarse = im.coarse_pool_trajectory(vort_train, filter_size, filter_size)
 
-  vort_coarse = im.average_pool_trajectory(vort_snapshots, filter_size, filter_size)
+  vort_coarse = im.coarse_pool_trajectory(vort_snapshots, filter_size, filter_size)
   history = super_model.fit(vort_train_coarse, vort_train, validation_data=(vort_val_coarse, vort_val), epochs=1)
 
   current_val_loss = history.history['val_loss'][-1]
@@ -86,13 +90,15 @@ for n in range(n_mse_steps):
     min_val_loss = current_val_loss
     super_model.save_weights('weights/sr_best_MSE.weights.h5')
 
+
+
 # generate a trajectory function
 dt_stable = np.round(dt_stable, 3)
-trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=0.5)
+trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep)
 real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
 
 # now batch the pooling fn
-pooling_fn = jax.jit(im.average_pool_trajectory, static_argnums=(1, 2))
+pooling_fn = jax.jit(im.coarse_pool_trajectory, static_argnums=(1, 2))
 pooling_fn_batched = jax.vmap(partial(pooling_fn, 
                                       pool_width=filter_size, 
                                       pool_height=filter_size))
@@ -117,9 +123,9 @@ for n in range(n_traj_steps):
   print("Traj step: ", n)
   # data augmentation at each iteration through the data (a fudge due to issues with jax/tf map compat)
   vort_train = np.array([sa.translate_x(sa.shift_reflect_y(omega)) for omega in vort_train])
-  vort_train_coarse = im.average_pool_trajectory(vort_train, filter_size, filter_size)
+  vort_train_coarse = im.coarse_pool_trajectory(vort_train, filter_size, filter_size)
 
-  vort_coarse = im.average_pool_trajectory(vort_snapshots, filter_size, filter_size)
+  vort_coarse = im.coarse_pool_trajectory(vort_snapshots, filter_size, filter_size)
   history = super_model.fit(vort_train_coarse, vort_train, validation_data=(vort_val_coarse, vort_val), epochs=1)
 
   current_val_loss = history.history['val_loss'][-1]

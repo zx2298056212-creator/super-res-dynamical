@@ -38,7 +38,7 @@ n_mse_steps = 25
 n_dyn_steps = 100
 
 # data location 
-data_loc = '/home/jacob/code/jax-cfd-data-gen/Re40test/'
+data_loc = '/mnt/ceph_rbd/ae-dynamical/Re40test/'
 file_front = 'vort_traj.'
 files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(1000)]
 
@@ -60,13 +60,6 @@ vort_val = vort_snapshots[-nval:]
 
 # build model
 ae_model = models.ae_densenet_v7(Nx, Ny, ae_dimension)
-
-checkpoint_callback = ModelCheckpoint(
-    filepath='weights/sr_test_epoch_{epoch:02d}.weights.h5',
-    save_weights_only=True,
-    save_best_only=True,
-    verbose=1
-)
 
 # train a few epochs on standard MSE prior to unrolling
 ae_model.compile(
@@ -94,7 +87,7 @@ for n in range(n_mse_steps):
   # save model weights if val loss improved
   if current_val_loss < min_val_loss:
     min_val_loss = current_val_loss
-    ae_model.save_weights('weights/ae_best_MSE.weights.h5')
+    ae_model.save_weights('/mnt/ceph_rbd/ae-dynamical/weights/ae_best_MSE.weights.h5')
 
 # generate a trajectory function
 dt_stable = np.round(dt_stable, 3)
@@ -115,7 +108,7 @@ ae_model.compile(
 
 # load weights if they exist
 if min_val_loss < np.inf:
-  ae_model.load_weights('weights/ae_best_MSE.weights.h5')
+  ae_model.load_weights('/mnt/ceph_rbd/ae-dynamical/weights/ae_best_MSE.weights.h5')
   print("Loaded pre-trained weights from an MSE fit.")
   min_val_loss = np.inf
 
@@ -134,5 +127,5 @@ for n in range(n_dyn_steps):
   # save model weights if val loss improved
   if current_val_loss < min_val_loss:
     min_val_loss = current_val_loss
-    ae_model.save_weights('weights/sr_best_traj.weights.h5')
+    ae_model.save_weights('/mnt/ceph_rbd/ae-dynamical/weights/sr_best_traj.weights.h5')
 
