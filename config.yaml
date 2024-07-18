@@ -1,0 +1,21 @@
+# config.yaml
+general:
+  data_location: '/mnt/ceph_rbd/ae-dynamical/Re100test/'
+  file_prefix: 'vort_traj.'
+  n_files: 1000
+
+grid:
+  Nx: 128
+  Ny: 128
+  Re: 100.0
+
+training:
+  filter_size: 8
+  n_grow: 3
+  T_unroll: 1.5
+  t_substep: 0.1
+  batch_size: 32
+  lr: 0.0005
+  nval: 5000
+  n_mse_steps: 25
+  n_trajectory_steps: 100

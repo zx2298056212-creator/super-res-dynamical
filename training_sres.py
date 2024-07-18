@@ -6,12 +6,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+import yaml
+
 import keras
 from keras.callbacks import ModelCheckpoint
 import jax_cfd.base as cfd
-
-# need tensorflow for tf.data
-import tensorflow as tf 
 
 from functools import partial
 
@@ -21,39 +20,50 @@ import loss as lf
 import interact_model as im
 import sym_augment as sa
 
+def load_config(path):
+  with open(path, 'r') as file:
+    return yaml.safe_load(file)
+
+# Load configuration
+config = load_config('config.yaml')
+general = config['general']
+grid_params = config['grid']
+train_params = config['training']
+
+# Use parameters from config file
+data_loc = general['data_location']
+file_front = general['file_prefix']
+n_files = general['n_files']
+
+Nx = grid_params['Nx']
+Ny = grid_params['Ny']
+Re = grid_params['Re']
+
+filter_size = train_params['filter_size']
+n_grow = train_params['n_grow']
+T_unroll = train_params['T_unroll']
+t_substep = train_params['t_substep']
+batch_size = train_params['batch_size']
+lr = train_params['lr']
+nval = train_params['nval']
+n_mse_steps = train_params['n_mse_steps']
+n_traj_steps = train_params['n_trajectory_steps']
+
+
 # setup problem and create grid
 Lx = 2 * jnp.pi
 Ly = 2 * jnp.pi
-Nx = 128
-Ny = 128
-Re = 100. 
-
-filter_size = 8 # how large are we average pooling?
-T_unroll = 2.5 # how far to unroll
-t_substep = 0.1
-
-# hyper parameters
-batch_size = 32
-lr = 5e-4
-nval = 5000
-
-# training configuration
-n_mse_steps = 25
-n_traj_steps = 100
-
-
-data_loc = '/home/jacob/code/jax-cfd-data-gen/Re100test/'
-file_front = 'vort_traj.'
 
 grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
 
 # estimate stable time step based on a "max velocity" using CFL condition
 max_vel_est = 5.
-dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1./Re, grid) / 2.
+dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1. / Re, grid) / 2.
 
 # create downsampled data -- needs cleaning
-files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(1000)]
+files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(n_files)]
 vort_snapshots = [np.load(file_name)[::2] for file_name in files]
+print("Note halving the number of raw snapshots in training. ")
 # add axis for channels (=1)
 vort_snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis]
 np.random.shuffle(vort_snapshots)
@@ -62,7 +72,7 @@ vort_val = vort_snapshots[-nval:]
 vort_val_coarse = im.coarse_pool_trajectory(vort_val, filter_size, filter_size)
 
 # TODO compute N_grow above given filter size and Nx
-super_model = models.super_res_v0(Nx // filter_size, Ny // filter_size, 32, N_grow=3)
+super_model = models.super_res_v0(Nx // filter_size, Ny // filter_size, 32, N_grow=n_grow)
 
 # train a few epochs on standard MSE prior to unrolling
 super_model.compile(
