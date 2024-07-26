@@ -1,7 +1,8 @@
 # config.yaml
 general:
-  #data_location: '/mnt/ceph_rbd/ae-dynamical/Re100test/'
-  data_location: '/Users/jpage2/code/jax-cfd-data-gen/Re100test/'
+  data_location: '/mnt/ceph_rbd/ae-dynamical/Re100test/'
+  # data_location: '/Users/jpage2/code/jax-cfd-data-gen/Re100test/'
+  weight_location: '/mnt/ceph_rbd/ae-dynamical/weights/'
   file_prefix: 'vort_traj.'
   n_files: 1000
   n_fields: 2 # 1 for vorticity, 2 for velocity

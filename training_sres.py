@@ -32,6 +32,7 @@ train_params = config['training']
 
 # Use parameters from config file
 data_loc = general['data_location']
+weight_loc = general['weight_location']
 file_front = general['file_prefix']
 n_files = general['n_files']
 n_fields = general['n_fields']
@@ -108,7 +109,7 @@ for n in range(n_mse_steps):
   # save model weights if val loss improved
   if current_val_loss < min_val_loss:
     min_val_loss = current_val_loss
-    super_model.save_weights('weights/sr_best_MSE.weights.h5')
+    super_model.save_weights(weight_loc + 'sr_best_MSE.weights.h5')
 
 # generate a trajectory function (for vorticity)
 dt_stable = np.round(dt_stable, 3)
@@ -148,7 +149,7 @@ super_model.compile(
 
 # load weights if they exist
 if min_val_loss < np.inf:
-  super_model.load_weights('weights/sr_best_MSE.weights.h5')
+  super_model.load_weights(weight_loc + 'sr_best_MSE.weights.h5')
   print("Loaded pre-trained weights from an MSE fit.")
   min_val_loss = np.inf
 
@@ -168,4 +169,4 @@ for n in range(n_traj_steps):
   # save model weights if val loss improved
   if current_val_loss < min_val_loss:
     min_val_loss = current_val_loss
-    super_model.save_weights('weights/sr_best_traj.weights.h5')
+    super_model.save_weights(weight_loc + 'sr_best_traj.weights.h5')
