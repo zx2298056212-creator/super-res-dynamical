@@ -221,9 +221,9 @@ def residual_block_periodic_conv(x, n_filters,
   x = keras.layers.add([x, layer_input])
   return x
 
-def super_res_v0(Nx_coarse, Ny_coarse, N_filters, N_grow=4):
+def super_res_v0(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=1):
   """ Build a model to perform super-resolution, scaling up N_grow times.  """
-  input_vort = Input(shape=(Nx_coarse, Ny_coarse, 1))
+  input_vort = Input(shape=(Nx_coarse, Ny_coarse, input_channels))
    
   # an initial linear layer prior to Residual blocks 
   x = periodic_convolution(input_vort, N_filters, kernel=(4, 4),
@@ -237,6 +237,6 @@ def super_res_v0(Nx_coarse, Ny_coarse, N_filters, N_grow=4):
     x = residual_block_periodic_conv(x, N_filters, kernel=(4,4),
                                      n_pad_rows=3, n_pad_cols=3)
   
-  x = periodic_convolution(x, 1, kernel=(4, 4),
+  x = periodic_convolution(x, input_channels, kernel=(4, 4),
                            n_pad_rows=3, n_pad_cols=3, activation='linear')
   return Model(input_vort, x)

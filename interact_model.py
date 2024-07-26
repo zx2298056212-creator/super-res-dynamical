@@ -9,6 +9,53 @@ def real_to_real_traj_fn(vort_phys, traj_fn):
   traj_phys = jnp.fft.irfftn(traj_rft, axes=(2,3))[...,jnp.newaxis]
   return traj_phys
 
+def compute_vel_traj(
+    vort_traj: jnp.ndarray,
+    dx: float, 
+    dy: float
+) -> jnp.ndarray:
+  _, Nx, Ny, _ = vort_traj.shape
+  vort_traj_rft = jnp.fft.rfftn(vort_traj, axes=(1,2))
+
+  all_kx = 2 * jnp.pi * jnp.fft.fftfreq(Nx, dx)
+  all_ky = 2 * jnp.pi * jnp.fft.rfftfreq(Ny, dy)
+  
+  kx_mesh, ky_mesh = jnp.meshgrid(all_kx, all_ky)
+  kx_mesh = kx_mesh.T
+  ky_mesh = ky_mesh.T
+  
+  jnp.seterr(divide='ignore') # will happen for 0,0 wavenumber
+  psik = vort_traj_rft / (kx_mesh ** 2 + ky_mesh ** 2)
+  psik[0,0] = 0.
+  
+  uk =  1j * ky_mesh * psik
+  vk = -1j * kx_mesh * psik
+
+  u_traj = jnp.fft.irfftn(uk, axes=(1,2))
+  v_traj = jnp.fft.irfftn(vk, axes=(1,2))
+  vel_traj = jnp.concatenate([u_traj, v_traj], axis=-1)
+  return vel_traj
+
+def compute_vort_traj(
+    vel_traj: jnp.ndarray,
+    dx: float,
+    dy: float
+) -> jnp.ndarray:
+  _, Nx, Ny, _ = vel_traj.shape
+  vel_traj_rft = jnp.fft.rfftn(vel_traj, axes=(1,2))
+
+  all_kx = 2 * jnp.pi * jnp.fft.fftfreq(Nx, dx)
+  all_ky = 2 * jnp.pi * jnp.fft.rfftfreq(Ny, dy)
+  
+  kx_mesh, ky_mesh = jnp.meshgrid(all_kx, all_ky)
+  kx_mesh = kx_mesh.T
+  ky_mesh = ky_mesh.T
+
+  vort_traj_rft = 1j * kx_mesh * vel_traj_rft[..., 1] - 1j * ky_mesh * vel_traj_rft[..., 0]
+  vort_traj = jnp.fft.irfftn(vort_traj_rft, axes=(1,2))
+  return vort_traj
+
+# TODO rename OMEGA because these work on any Nchannels
 def average_pool_trajectory(omega_traj, pool_width, pool_height):
   trajectory_length, Nx, Ny, Nchannels = omega_traj.shape
   assert Nx % pool_width == 0

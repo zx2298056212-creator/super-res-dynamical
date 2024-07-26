@@ -1,4 +1,5 @@
 # TODO fix to work with either custom training step or tf.data.Dataset for augmentation
+# TODO dynamic training increasing T_unroll <<< then release 
 import os
 os.environ["KERAS_BACKEND"] = "jax"
 
@@ -9,7 +10,6 @@ import numpy as np
 import yaml
 
 import keras
-from keras.callbacks import ModelCheckpoint
 import jax_cfd.base as cfd
 
 from functools import partial
@@ -49,10 +49,11 @@ nval = train_params['nval']
 n_mse_steps = train_params['n_mse_steps']
 n_traj_steps = train_params['n_trajectory_steps']
 
-
 # setup problem and create grid
 Lx = 2 * jnp.pi
 Ly = 2 * jnp.pi
+# TODO move following to config when working
+N_state_fields = 2 # 1 for vorticity, 2 for velocity
 
 grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
 
@@ -65,14 +66,22 @@ files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(n_files
 vort_snapshots = [np.load(file_name)[::2] for file_name in files]
 print("Note halving the number of raw snapshots in training. ")
 # add axis for channels (=1)
-vort_snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis]
+snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis]
 np.random.shuffle(vort_snapshots)
-vort_train = vort_snapshots[:-nval]
-vort_val = vort_snapshots[-nval:]
-vort_val_coarse = im.coarse_pool_trajectory(vort_val, filter_size, filter_size)
+
+if N_state_fields > 1:
+  snapshots = im.compute_vel_traj_fourier(snapshots, Lx / Nx, Ly / Ny)
+
+snapshots_train = snapshots[:-nval]
+snapshots_val = snapshots[-nval:]
+snapshots_val_coarse = im.coarse_pool_trajectory(snapshots_val, filter_size, filter_size)
 
 # TODO compute N_grow above given filter size and Nx
-super_model = models.super_res_v0(Nx // filter_size, Ny // filter_size, 32, N_grow=n_grow)
+super_model = models.super_res_v0(Nx // filter_size,
+                                  Ny // filter_size, 
+                                  32, 
+                                  N_grow=n_grow, 
+                                  input_channels=N_state_fields)
 
 # train a few epochs on standard MSE prior to unrolling
 super_model.compile(
@@ -87,11 +96,12 @@ min_val_loss = np.inf
 for n in range(n_mse_steps):
   print("MSE step: ", n)
   # data augmentation at each iteration through the data (a fudge due to issues with jax/tf map compat)
-  vort_train = np.array([sa.translate_x(sa.shift_reflect_y(omega)) for omega in vort_train])
-  vort_train_coarse = im.coarse_pool_trajectory(vort_train, filter_size, filter_size)
+  snapshots_train = np.array([sa.translate_x(sa.shift_reflect_y(field)) for field in snapshots_train])
+  snapshots_train_coarse = im.coarse_pool_trajectory(snapshots_train, filter_size, filter_size)
 
-  vort_coarse = im.coarse_pool_trajectory(vort_snapshots, filter_size, filter_size)
-  history = super_model.fit(vort_train_coarse, vort_train, validation_data=(vort_val_coarse, vort_val), epochs=1)
+  history = super_model.fit(snapshots_train_coarse, 
+                            snapshots_train, 
+                            validation_data=(snapshots_val_coarse, snapshots_val), epochs=1)
 
   current_val_loss = history.history['val_loss'][-1]
 
@@ -100,9 +110,7 @@ for n in range(n_mse_steps):
     min_val_loss = current_val_loss
     super_model.save_weights('weights/sr_best_MSE.weights.h5')
 
-
-
-# generate a trajectory function
+# generate a trajectory function (for vorticity)
 dt_stable = np.round(dt_stable, 3)
 trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep)
 real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
@@ -113,9 +121,26 @@ pooling_fn_batched = jax.vmap(partial(pooling_fn,
                                       pool_width=filter_size, 
                                       pool_height=filter_size))
 
-loss_fn = jax.jit(partial(lf.mse_and_traj_coarse, 
-                          trajectory_rollout_fn=real_traj_fn, 
-                          pooling_fn=pooling_fn_batched))
+# batch the velocity/vorticity functions
+vel_to_vort_fn = jax.jit(
+  partial(im.compute_vel_traj, dx=Lx / Nx, dy=Ly / Ny)
+  )
+vort_to_vel_fn = jax.jit(
+  partial(im.compute_vort_traj, dx=Lx / Nx, dy=Ly / Ny)
+  )
+vel_to_vort_fn_batched = jax.vmap(vel_to_vort_fn)
+vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
+
+if N_state_fields > 1:
+  loss_fn = jax.jit(partial(lf.mse_and_traj_vel, 
+                            trajectory_rollout_fn=real_traj_fn, 
+                            pooling_fn=pooling_fn_batched))
+else:
+  loss_fn = jax.jit(partial(lf.mse_and_traj_coarse, 
+                            trajectory_rollout_fn=real_traj_fn, 
+                            pooling_fn=pooling_fn_batched,
+                            vel_to_vort_fn=vel_to_vort_fn_batched,
+                            vort_to_vel_fn=vort_to_vel_fn_batched))
 
 super_model.compile(
     optimizer=keras.optimizers.Adam(learning_rate=lr),
@@ -132,11 +157,13 @@ if min_val_loss < np.inf:
 for n in range(n_traj_steps):
   print("Traj step: ", n)
   # data augmentation at each iteration through the data (a fudge due to issues with jax/tf map compat)
-  vort_train = np.array([sa.translate_x(sa.shift_reflect_y(omega)) for omega in vort_train])
-  vort_train_coarse = im.coarse_pool_trajectory(vort_train, filter_size, filter_size)
+  snapshots_train = np.array([sa.translate_x(sa.shift_reflect_y(field)) for field in snapshots_train])
+  snapshots_train_coarse = im.coarse_pool_trajectory(snapshots_train, filter_size, filter_size)
 
-  vort_coarse = im.coarse_pool_trajectory(vort_snapshots, filter_size, filter_size)
-  history = super_model.fit(vort_train_coarse, vort_train, validation_data=(vort_val_coarse, vort_val), epochs=1)
+  history = super_model.fit(snapshots_train_coarse, 
+                            snapshots_train, 
+                            validation_data=(snapshots_val_coarse, snapshots_val), 
+                            epochs=1)
 
   current_val_loss = history.history['val_loss'][-1]
 
