@@ -34,6 +34,7 @@ train_params = config['training']
 data_loc = general['data_location']
 file_front = general['file_prefix']
 n_files = general['n_files']
+n_fields = general['n_fields']
 
 Nx = grid_params['Nx']
 Ny = grid_params['Ny']
@@ -53,7 +54,6 @@ n_traj_steps = train_params['n_trajectory_steps']
 Lx = 2 * jnp.pi
 Ly = 2 * jnp.pi
 # TODO move following to config when working
-N_state_fields = 2 # 1 for vorticity, 2 for velocity
 
 grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
 
@@ -69,8 +69,8 @@ print("Note halving the number of raw snapshots in training. ")
 snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis]
 np.random.shuffle(vort_snapshots)
 
-if N_state_fields > 1:
-  snapshots = im.compute_vel_traj_fourier(snapshots, Lx / Nx, Ly / Ny)
+if n_fields > 1:
+  snapshots = im.compute_vel_traj(snapshots, Lx / Nx, Ly / Ny)
 
 snapshots_train = snapshots[:-nval]
 snapshots_val = snapshots[-nval:]
@@ -81,7 +81,7 @@ super_model = models.super_res_v0(Nx // filter_size,
                                   Ny // filter_size, 
                                   32, 
                                   N_grow=n_grow, 
-                                  input_channels=N_state_fields)
+                                  input_channels=n_fields)
 
 # train a few epochs on standard MSE prior to unrolling
 super_model.compile(
@@ -123,22 +123,20 @@ pooling_fn_batched = jax.vmap(partial(pooling_fn,
 
 # batch the velocity/vorticity functions
 vel_to_vort_fn = jax.jit(
-  partial(im.compute_vel_traj, dx=Lx / Nx, dy=Ly / Ny)
+  partial(im.compute_vort_traj, dx=Lx / Nx, dy=Ly / Ny)
   )
 vort_to_vel_fn = jax.jit(
-  partial(im.compute_vort_traj, dx=Lx / Nx, dy=Ly / Ny)
+  partial(im.compute_vel_traj, dx=Lx / Nx, dy=Ly / Ny)
   )
 vel_to_vort_fn_batched = jax.vmap(vel_to_vort_fn)
 vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 
-if N_state_fields > 1:
+if n_fields == 1:
+  loss_fn = jax.jit(partial(lf.mse_and_traj, 
+                            trajectory_rollout_fn=real_traj_fn))
+else:
   loss_fn = jax.jit(partial(lf.mse_and_traj_vel, 
                             trajectory_rollout_fn=real_traj_fn, 
-                            pooling_fn=pooling_fn_batched))
-else:
-  loss_fn = jax.jit(partial(lf.mse_and_traj_coarse, 
-                            trajectory_rollout_fn=real_traj_fn, 
-                            pooling_fn=pooling_fn_batched,
                             vel_to_vort_fn=vel_to_vort_fn_batched,
                             vort_to_vel_fn=vort_to_vel_fn_batched))
 

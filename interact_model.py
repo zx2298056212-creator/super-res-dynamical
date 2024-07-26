@@ -21,15 +21,14 @@ def compute_vel_traj(
   all_ky = 2 * jnp.pi * jnp.fft.rfftfreq(Ny, dy)
   
   kx_mesh, ky_mesh = jnp.meshgrid(all_kx, all_ky)
-  kx_mesh = kx_mesh.T
-  ky_mesh = ky_mesh.T
+  kx_mesh = (kx_mesh.T)[jnp.newaxis, ..., jnp.newaxis]
+  ky_mesh = (ky_mesh.T)[jnp.newaxis, ..., jnp.newaxis]
   
-  jnp.seterr(divide='ignore') # will happen for 0,0 wavenumber
   psik = vort_traj_rft / (kx_mesh ** 2 + ky_mesh ** 2)
-  psik[0,0] = 0.
+  psik_updated = psik.at[:, 0, 0, :].set(0.)
   
-  uk =  1j * ky_mesh * psik
-  vk = -1j * kx_mesh * psik
+  uk =  1j * ky_mesh * psik_updated
+  vk = -1j * kx_mesh * psik_updated
 
   u_traj = jnp.fft.irfftn(uk, axes=(1,2))
   v_traj = jnp.fft.irfftn(vk, axes=(1,2))
@@ -48,12 +47,12 @@ def compute_vort_traj(
   all_ky = 2 * jnp.pi * jnp.fft.rfftfreq(Ny, dy)
   
   kx_mesh, ky_mesh = jnp.meshgrid(all_kx, all_ky)
-  kx_mesh = kx_mesh.T
-  ky_mesh = ky_mesh.T
+  kx_mesh = (kx_mesh.T)[jnp.newaxis, ...]
+  ky_mesh = (ky_mesh.T)[jnp.newaxis, ...]
 
   vort_traj_rft = 1j * kx_mesh * vel_traj_rft[..., 1] - 1j * ky_mesh * vel_traj_rft[..., 0]
   vort_traj = jnp.fft.irfftn(vort_traj_rft, axes=(1,2))
-  return vort_traj
+  return vort_traj[..., jnp.newaxis]
 
 # TODO rename OMEGA because these work on any Nchannels
 def average_pool_trajectory(omega_traj, pool_width, pool_height):

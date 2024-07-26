@@ -1,8 +1,10 @@
 # config.yaml
 general:
-  data_location: '/mnt/ceph_rbd/ae-dynamical/Re100test/'
+  #data_location: '/mnt/ceph_rbd/ae-dynamical/Re100test/'
+  data_location: '/Users/jpage2/code/jax-cfd-data-gen/Re100test/'
   file_prefix: 'vort_traj.'
   n_files: 1000
+  n_fields: 2 # 1 for vorticity, 2 for velocity
 
 grid:
   Nx: 128
@@ -12,10 +14,10 @@ grid:
 training:
   filter_size: 8
   n_grow: 3
-  T_unroll: 1.5
+  T_unroll: 1.0
   t_substep: 0.1
   batch_size: 32
-  lr: 0.0005
-  nval: 5000
+  lr: 0.0001
+  nval: 50
   n_mse_steps: 25
   n_trajectory_steps: 100

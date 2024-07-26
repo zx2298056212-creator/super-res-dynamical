@@ -47,7 +47,7 @@ def mse_and_traj_vel(
 
   # (1) need to first convert vel to vort
   vort_pred = vel_to_vort_fn(vel_pred[:, jnp.newaxis, ...])
-  vort_true = vel_to_vort_fn(vort_pred[:, jnp.newaxis, ...])
+  vort_true = vel_to_vort_fn(vel_true[:, jnp.newaxis, ...])
 
   # (2) Unroll
   true_traj = trajectory_rollout_fn(vort_true)
