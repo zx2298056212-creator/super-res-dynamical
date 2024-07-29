@@ -36,6 +36,7 @@ weight_loc = general['weight_location']
 file_front = general['file_prefix']
 n_files = general['n_files']
 n_fields = general['n_fields']
+loss_name = general['loss_fn']
 
 Nx = grid_params['Nx']
 Ny = grid_params['Ny']
@@ -46,10 +47,12 @@ n_grow = train_params['n_grow']
 T_unroll = train_params['T_unroll']
 t_substep = train_params['t_substep']
 batch_size = train_params['batch_size']
-lr = train_params['lr']
+lr_mse = train_params['lr_mse']
+lr_traj = train_params['lr_traj']
 nval = train_params['nval']
 n_mse_steps = train_params['n_mse_steps']
 n_traj_steps = train_params['n_trajectory_steps']
+alpha = train_params['alpha']
 
 # setup problem and create grid
 Lx = 2 * jnp.pi
@@ -84,12 +87,31 @@ super_model = models.super_res_v0(Nx // filter_size,
                                   N_grow=n_grow, 
                                   input_channels=n_fields)
 
+# batch the velocity/vorticity functions
+vel_to_vort_fn = jax.jit(
+  partial(im.compute_vort_traj, dx=Lx / Nx, dy=Ly / Ny)
+  )
+vort_to_vel_fn = jax.jit(
+  partial(im.compute_vel_traj, dx=Lx / Nx, dy=Ly / Ny)
+  )
+vel_to_vort_fn_batched = jax.vmap(vel_to_vort_fn)
+vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
+
 # train a few epochs on standard MSE prior to unrolling
-super_model.compile(
-    optimizer=keras.optimizers.Adam(learning_rate=lr),
-    loss='mse', 
-    metrics=[keras.losses.MeanSquaredError()]
-)
+if n_fields == 1:
+  super_model.compile(
+      optimizer=keras.optimizers.Adam(learning_rate=lr_mse),
+      loss='mse', 
+      metrics=[keras.losses.MeanSquaredError()]
+  )
+else:
+  loss_mse = jax.jit(partial(lf.mse_vel_and_vort, 
+                             vel_to_vort_fn=vel_to_vort_fn_batched))
+  super_model.compile(
+      optimizer=keras.optimizers.Adam(learning_rate=lr_mse),
+      loss=loss_mse, 
+      metrics=[keras.losses.MeanSquaredError()]
+  )
 
 # min val loss init
 min_val_loss = np.inf
@@ -122,27 +144,35 @@ pooling_fn_batched = jax.vmap(partial(pooling_fn,
                                       pool_width=filter_size, 
                                       pool_height=filter_size))
 
-# batch the velocity/vorticity functions
-vel_to_vort_fn = jax.jit(
-  partial(im.compute_vort_traj, dx=Lx / Nx, dy=Ly / Ny)
-  )
-vort_to_vel_fn = jax.jit(
-  partial(im.compute_vel_traj, dx=Lx / Nx, dy=Ly / Ny)
-  )
-vel_to_vort_fn_batched = jax.vmap(vel_to_vort_fn)
-vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 
-if n_fields == 1:
-  loss_fn = jax.jit(partial(lf.mse_and_traj, 
-                            trajectory_rollout_fn=real_traj_fn))
-else:
-  loss_fn = jax.jit(partial(lf.mse_and_traj_vel, 
-                            trajectory_rollout_fn=real_traj_fn, 
-                            vel_to_vort_fn=vel_to_vort_fn_batched,
-                            vort_to_vel_fn=vort_to_vel_fn_batched))
+# loss function selection
+if loss_name == 'FINE':
+  if n_fields == 1:
+    loss_fn = jax.jit(partial(lf.mse_and_traj, 
+                              trajectory_rollout_fn=real_traj_fn,
+                              alpha=alpha))
+  else:
+    loss_fn = jax.jit(partial(lf.mse_and_traj_vel, 
+                              trajectory_rollout_fn=real_traj_fn, 
+                              vel_to_vort_fn=vel_to_vort_fn_batched,
+                              vort_to_vel_fn=vort_to_vel_fn_batched,
+                              alpha=alpha))
+elif loss_name == 'COARSE':
+  if n_fields == 1:
+    loss_fn = jax.jit(partial(lf.mse_and_traj_coarse, 
+                              trajectory_rollout_fn=real_traj_fn,
+                              pooling_fn=pooling_fn_batched,
+                              alpha=alpha))
+  else:
+    loss_fn = jax.jit(partial(lf.mse_and_traj_vel_coarse, 
+                              trajectory_rollout_fn=real_traj_fn, 
+                              vel_to_vort_fn=vel_to_vort_fn_batched,
+                              vort_to_vel_fn=vort_to_vel_fn_batched,
+                              pooling_fn=pooling_fn_batched,
+                              alpha=alpha))
 
 super_model.compile(
-    optimizer=keras.optimizers.Adam(learning_rate=lr),
+    optimizer=keras.optimizers.Adam(learning_rate=lr_traj),
     loss=loss_fn, 
     metrics=[keras.losses.MeanSquaredError()]
 )

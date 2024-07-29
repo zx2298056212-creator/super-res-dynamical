@@ -24,11 +24,10 @@ def compute_vel_traj(
   kx_mesh = (kx_mesh.T)[jnp.newaxis, ..., jnp.newaxis]
   ky_mesh = (ky_mesh.T)[jnp.newaxis, ..., jnp.newaxis]
   
-  psik = vort_traj_rft / (kx_mesh ** 2 + ky_mesh ** 2)
-  psik_updated = psik.at[:, 0, 0, :].set(0.)
+  psik = vort_traj_rft / (1e-7 + kx_mesh ** 2 + ky_mesh ** 2)
   
-  uk =  1j * ky_mesh * psik_updated
-  vk = -1j * kx_mesh * psik_updated
+  uk =  1j * ky_mesh * psik
+  vk = -1j * kx_mesh * psik
 
   u_traj = jnp.fft.irfftn(uk, axes=(1,2))
   v_traj = jnp.fft.irfftn(vk, axes=(1,2))
