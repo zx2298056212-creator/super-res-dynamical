@@ -79,18 +79,6 @@ snapshots_train = snapshots[:-nval]
 snapshots_val = snapshots[-nval:]
 snapshots_val_coarse = im.coarse_pool_trajectory(snapshots_val, filter_size, filter_size)
 
-# TODO compute N_grow above given filter size and Nx
-#super_model = models.super_res_v0(Nx // filter_size,
-#                                  Ny // filter_size, 
-#                                  32, 
-#                                  N_grow=n_grow, 
-#                                  input_channels=n_fields)
-super_model = models.super_res_vel_v1(Nx // filter_size,
-                                      Ny // filter_size, 
-                                      32, 
-                                      N_grow=n_grow, 
-                                      input_channels=n_fields)
-
 # batch the velocity/vorticity functions
 vel_to_vort_fn = jax.jit(
   partial(im.compute_vort_traj, dx=Lx / Nx, dy=Ly / Ny)
@@ -103,12 +91,22 @@ vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 
 # train a few epochs on standard MSE prior to unrolling
 if n_fields == 1:
+  super_model = models.super_res_v0(Nx // filter_size,
+                                    Ny // filter_size, 
+                                    32, 
+                                    N_grow=n_grow, 
+                                    input_channels=n_fields)
   super_model.compile(
       optimizer=keras.optimizers.Adam(learning_rate=lr_mse),
       loss='mse', 
       metrics=[keras.losses.MeanSquaredError()]
   )
 else:
+  super_model = models.super_res_vel_v1(Nx // filter_size,
+                                        Ny // filter_size, 
+                                        32, 
+                                        N_grow=n_grow, 
+                                        input_channels=n_fields)
   loss_mse = jax.jit(partial(lf.mse_vel_and_vort, 
                              vel_to_vort_fn=vel_to_vort_fn_batched))
   super_model.compile(
