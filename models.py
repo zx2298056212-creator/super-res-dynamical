@@ -7,6 +7,7 @@ from keras.layers import Input, MaxPooling2D, UpSampling2D
 from keras.layers import BatchNormalization, Concatenate, Activation
 
 from keras.models import Model
+import jax.numpy as jnp
 
 def pad_periodic(x, n_pad_rows=0, n_pad_cols=0):
   """
@@ -239,4 +240,82 @@ def super_res_v0(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=1):
   
   x = periodic_convolution(x, input_channels, kernel=(4, 4),
                            n_pad_rows=3, n_pad_cols=3, activation='linear')
+  return Model(input_vort, x)
+
+def leray_projection(fields):
+  batch_size, Nx, Ny, _ = fields.shape
+  dx = 2 * jnp.pi / Nx 
+  dy = 2 * jnp.pi / Ny
+
+  fields_rft = jnp.fft.rfftn(fields, axes=(1,2))
+  u_rft = fields_rft[..., 0]
+  v_rft = fields_rft[..., 1]
+
+  all_kx = 2 * jnp.pi * jnp.fft.fftfreq(Nx, dx)
+  all_ky = 2 * jnp.pi * jnp.fft.rfftfreq(Ny, dy)
+  
+  kx_mesh, ky_mesh = jnp.meshgrid(all_kx, all_ky)
+  kx_mesh = jnp.repeat(
+    (kx_mesh.T)[jnp.newaxis, ..., jnp.newaxis],
+    repeats=batch_size, 
+    axis=0)
+  ky_mesh = jnp.repeat(
+    (ky_mesh.T)[jnp.newaxis, ..., jnp.newaxis],
+    repeats=batch_size,
+    axis=0)
+
+  # (1) compute divergence 
+  ikxu = 1j * kx_mesh * u_rft[..., jnp.newaxis]
+  ikyv = 1j * ky_mesh * v_rft[..., jnp.newaxis]
+  div_u_rft = ikxu + ikyv
+
+  # (2) solve Poisson problem 
+  phi_rft = - div_u_rft / (1e-7 + kx_mesh ** 2 + ky_mesh ** 2)
+
+  # (3) take grad into channels
+  u_correct_ft = -jnp.concatenate([1j * kx_mesh * phi_rft,
+                                   1j * ky_mesh * phi_rft], axis=-1)
+  u_correction = jnp.fft.irfftn(u_correct_ft, axes=(1,2))
+  return fields + u_correction
+
+# objective is make div-func pre-compiled to avoid rebuild every batch
+def div_free_2D_layer(u_in):
+  """" Custom layer to project onto divergence-free solution via Leray:
+          u_out = u_in - grad( nab^{-1} div(u_in) )
+       Expected shape is (None, Nx, Ny, 2) """
+  if len(u_in.shape) != 4:
+    raise ValueError("Expected 4D input, input has shape", u_in.shape)
+  if u_in.shape[-1] != 2:
+    raise ValueError("Expected 2 channels (2D vel field) but input has ",
+                     u_in.shape[-1],
+                     "channels.")
+  # output shape does not include batch dim -- check
+  u_projected = Lambda(leray_projection, 
+                       output_shape=u_in.shape[1:])(u_in)
+  return u_projected
+
+# class MyLayer(Layer):
+#     def call(self, x):
+#         return jax_fn(x)
+
+def super_res_vel_v1(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
+  """ Build a model to perform super-resolution, scaling up N_grow times.  """
+  input_vort = Input(shape=(Nx_coarse, Ny_coarse, input_channels))
+   
+  # an initial linear layer prior to Residual blocks 
+  x = periodic_convolution(input_vort, N_filters, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  
+  # upsample and apply residual block however many times we need to rescale 
+  # note we are keeping our kernel constant size -- perhaps not ideal
+  # might want to scale this too 
+  for _ in range(N_grow):
+    x = UpSampling2D((2,2))(x)
+    x = residual_block_periodic_conv(x, N_filters, kernel=(4,4),
+                                     n_pad_rows=3, n_pad_cols=3)
+  
+  x = periodic_convolution(x, input_channels, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  # project out non-solenoidal component
+  x = div_free_2D_layer(x)
   return Model(input_vort, x)

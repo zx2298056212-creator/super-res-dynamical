@@ -57,7 +57,6 @@ alpha = train_params['alpha']
 # setup problem and create grid
 Lx = 2 * jnp.pi
 Ly = 2 * jnp.pi
-# TODO move following to config when working
 
 grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
 
@@ -81,11 +80,16 @@ snapshots_val = snapshots[-nval:]
 snapshots_val_coarse = im.coarse_pool_trajectory(snapshots_val, filter_size, filter_size)
 
 # TODO compute N_grow above given filter size and Nx
-super_model = models.super_res_v0(Nx // filter_size,
-                                  Ny // filter_size, 
-                                  32, 
-                                  N_grow=n_grow, 
-                                  input_channels=n_fields)
+#super_model = models.super_res_v0(Nx // filter_size,
+#                                  Ny // filter_size, 
+#                                  32, 
+#                                  N_grow=n_grow, 
+#                                  input_channels=n_fields)
+super_model = models.super_res_vel_v1(Nx // filter_size,
+                                      Ny // filter_size, 
+                                      32, 
+                                      N_grow=n_grow, 
+                                      input_channels=n_fields)
 
 # batch the velocity/vorticity functions
 vel_to_vort_fn = jax.jit(
