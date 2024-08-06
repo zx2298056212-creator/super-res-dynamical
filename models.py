@@ -294,12 +294,9 @@ def div_free_2D_layer(u_in):
                        output_shape=u_in.shape[1:])(u_in)
   return u_projected
 
-# class MyLayer(Layer):
-#     def call(self, x):
-#         return jax_fn(x)
-
 def super_res_vel_v1(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
-  """ Build a model to perform super-resolution, scaling up N_grow times.  """
+  """ Build a model to perform super-resolution on VELOCITY DATA, 
+      scaling up N_grow times.  """
   input_vort = Input(shape=(Nx_coarse, Ny_coarse, input_channels))
    
   # an initial linear layer prior to Residual blocks 
@@ -316,6 +313,35 @@ def super_res_vel_v1(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2
   
   x = periodic_convolution(x, input_channels, kernel=(4, 4),
                            n_pad_rows=3, n_pad_cols=3, activation='linear')
+  # project out non-solenoidal component
+  x = div_free_2D_layer(x)
+  return Model(input_vort, x)
+
+def super_res_vel_v2(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
+  """ Build a model to perform super-resolution on VELOCITY DATA, 
+      scaling up N_grow times.  
+      Change vs v1: increasing kernel size as we go up
+  """
+  input_vort = Input(shape=(Nx_coarse, Ny_coarse, input_channels))
+   
+  # an initial linear layer prior to Residual blocks 
+  x = periodic_convolution(input_vort, N_filters, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  
+  # upsample and apply residual block however many times we need to rescale 
+  # note we are keeping our kernel constant size -- perhaps not ideal
+  # might want to scale this too 
+  for n in range(N_grow):
+    kern_width = 2 ** (2 + n)
+    x = UpSampling2D((2,2))(x)
+    x = residual_block_periodic_conv(x, 
+                                     N_filters, 
+                                     kernel=(kern_width,kern_width),
+                                     n_pad_rows=kern_width-1, 
+                                     n_pad_cols=kern_width-1)
+  
+  x = periodic_convolution(x, input_channels, kernel=(16, 16),
+                           n_pad_rows=15, n_pad_cols=15, activation='linear')
   # project out non-solenoidal component
   x = div_free_2D_layer(x)
   return Model(input_vort, x)
