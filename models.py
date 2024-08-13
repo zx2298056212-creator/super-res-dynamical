@@ -294,6 +294,43 @@ def div_free_2D_layer(u_in):
                        output_shape=u_in.shape[1:])(u_in)
   return u_projected
 
+def exponential_filter(fields):
+  batch_size, Nx, Ny, _ = fields.shape
+  dx = 2 * jnp.pi / Nx 
+  dy = 2 * jnp.pi / Ny
+
+  fields_rft = jnp.fft.rfftn(fields, axes=(1,2))
+
+  all_kx = 2 * jnp.pi * jnp.fft.fftfreq(Nx, dx)
+  all_ky = 2 * jnp.pi * jnp.fft.rfftfreq(Ny, dy)
+  
+  kx_mesh, ky_mesh = jnp.meshgrid(all_kx, all_ky)
+  kx_mesh = jnp.repeat(
+    (kx_mesh.T)[jnp.newaxis, ..., jnp.newaxis],
+    repeats=batch_size, 
+    axis=0)
+  ky_mesh = jnp.repeat(
+    (ky_mesh.T)[jnp.newaxis, ..., jnp.newaxis],
+    repeats=batch_size,
+    axis=0)
+  
+  # following Dresdner et al filter exp(- alpha | k / k_max | ^ 2p | ); p = 32, alpha = 6
+  k_all = jnp.sqrt(kx_mesh ** 2 + ky_mesh ** 2)
+  k_max = jnp.max(k_all)
+  filter_exp = jnp.exp( -6 * (k_all / k_max) ** 64)
+
+  # filter field and invert
+  filtered_field = fields_rft * filter_exp
+  
+  return jnp.fft.irfftn(filtered_field, axes=(1,2))
+
+# exp filter layer
+def exp_filter_layer(u_in):
+  """" Custom layer to apply exponential filter """
+  u_projected = Lambda(exponential_filter, 
+                       output_shape=u_in.shape[1:])(u_in)
+  return u_projected
+
 def super_res_vel_v1(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
   """ Build a model to perform super-resolution on VELOCITY DATA, 
       scaling up N_grow times.  """
@@ -344,4 +381,5 @@ def super_res_vel_v2(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2
                            n_pad_rows=15, n_pad_cols=15, activation='linear')
   # project out non-solenoidal component
   x = div_free_2D_layer(x)
+  x = exp_filter_layer(x)
   return Model(input_vort, x)

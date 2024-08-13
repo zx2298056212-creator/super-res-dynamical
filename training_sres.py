@@ -102,7 +102,7 @@ if n_fields == 1:
       metrics=[keras.losses.MeanSquaredError()]
   )
 else:
-  super_model = models.super_res_vel_v1(Nx // filter_size,
+  super_model = models.super_res_vel_v2(Nx // filter_size,
                                         Ny // filter_size, 
                                         32, 
                                         N_grow=n_grow, 
