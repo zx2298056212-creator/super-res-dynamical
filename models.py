@@ -380,6 +380,7 @@ def super_res_vel_v2(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2
   x = periodic_convolution(x, input_channels, kernel=(16, 16),
                            n_pad_rows=15, n_pad_cols=15, activation='linear')
   # project out non-solenoidal component
-  x = div_free_2D_layer(x)
+  if input_channels == 2:
+    x = div_free_2D_layer(x)
   x = exp_filter_layer(x)
   return Model(input_vort, x)

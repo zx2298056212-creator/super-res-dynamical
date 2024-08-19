@@ -91,11 +91,11 @@ vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 
 # train a few epochs on standard MSE prior to unrolling
 if n_fields == 1:
-  super_model = models.super_res_v0(Nx // filter_size,
-                                    Ny // filter_size, 
-                                    32, 
-                                    N_grow=n_grow, 
-                                    input_channels=n_fields)
+  super_model = models.super_res_vel_v2(Nx // filter_size,
+                                        Ny // filter_size, 
+                                        32, 
+                                        N_grow=n_grow, 
+                                        input_channels=n_fields)
   super_model.compile(
       optimizer=keras.optimizers.Adam(learning_rate=lr_mse),
       loss='mse', 
