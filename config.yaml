@@ -17,7 +17,7 @@ training:
   filter_size: 8
   n_grow: 3
   T_unroll: 1.0
-  t_substep: 0.1
+  M_substep: 8 # dt_assim = M_substep * dt_stable
   batch_size: 32
   lr_mse: 0.0001
   lr_traj: 0.00001
