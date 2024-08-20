@@ -101,7 +101,7 @@ def mse_and_traj_vel_coarse(
                          pooling_fn(vel_pred_traj)) ** 2
   return alpha * jnp.mean(squared_errors_recon) + (1. - alpha) * jnp.mean(squared_errors_traj)
 
-# following is not over batches -- perhaps move to new file
+# following is not over batches -- perhaps move to new file (loss data_assim or just data_assim routines)
 def data_assim_vort(
     vort_pred: jnp.ndarray,
     vort_traj_coarse_true: jnp.ndarray,

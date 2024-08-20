@@ -28,10 +28,10 @@ M_substep = 8 # how many stable timesteps in one assimilation timestep
 filter_size = 8
 
 # hyper parameters + optimizer 
-lr = 1e-1
-n_opt_step = 250
+lr = 0.2
+n_opt_step = 100
 opt_class = optax.adam
-file_number = 0 # a trajectory from which IC is extracted
+file_number = 100 # a trajectory from which IC is extracted
 snap_number = 0 # within trajectory
 
 # (0) build grid, stable timestep etc
@@ -86,13 +86,14 @@ optimizer = opt_class(lr)
 state_current = vort_pred_init
 
 opt_state = optimizer.init(state_current)
-for _ in range(n_opt_step):
+for n in range(n_opt_step):
   state_current, opt_state, loss = update_guess(state_current, opt_state, optimizer)
-  print(loss)
+  print("Step: ", n+1, "Loss: ", loss)
 
 jnp.save(
   'assim_ex.npy', 
   jnp.concatenate([vort_init[..., jnp.newaxis],
                    vort_pred_init[..., jnp.newaxis], 
-                   state_current[..., jnp.newaxis]], axis=-1)
+                   state_current[..., jnp.newaxis]], 
+                   axis=-1)
                    )

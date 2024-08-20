@@ -20,11 +20,11 @@ def kolmogorov_ck13_step(
   forcing_fn = lambda grid: cfd.forcings.kolmogorov_forcing(
       grid, k=wave_number, offsets=offsets)
   return spectral.equations.NavierStokes2D(
-      1. / Re,
-      grid,
-      drag=0.0,
-      smooth=smooth,
-      forcing_fn=forcing_fn)
+      viscosity = 1. / Re,
+      grid = grid,
+      drag = 0.0,
+      smooth = smooth,
+      forcing_fn = forcing_fn)
 
 def generate_time_forward_map(
     dt: float,
