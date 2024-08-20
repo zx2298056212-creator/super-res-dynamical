@@ -4,18 +4,16 @@ os.environ["KERAS_BACKEND"] = "jax"
 import jax
 import jax.numpy as jnp
 import numpy as np
+import optax
 
-import yaml
-
-import keras
 import jax_cfd.base as cfd
-
 from functools import partial
 
 import time_stepping as ts
 import loss as lf
 import interact_model as im
-import sym_augment as sa
+
+from scipy.ndimage import zoom
 
 # setup problem and create grid
 Lx = 2 * jnp.pi
@@ -29,9 +27,10 @@ T_unroll = 1.5
 M_substep = 8 # how many stable timesteps in one assimilation timestep
 filter_size = 8
 
-# hyper parameters
-lr = 5e-4
-n_opt_step = 100
+# hyper parameters + optimizer 
+lr = 1e-1
+n_opt_step = 250
+opt_class = optax.adam
 file_number = 0 # a trajectory from which IC is extracted
 snap_number = 0 # within trajectory
 
@@ -70,16 +69,30 @@ loss_fn = partial(lf.data_assim_vort,
                   trajectory_rollout_fn=real_traj_fn,
                   pooling_fn=pooling_fn)
 loss_fn_jitted = jax.jit(loss_fn)
-grad_loss_fn = jax.grad(loss_fn_jitted)
+val_and_grad_fn = jax.value_and_grad(loss_fn_jitted)
 
 # (3) setup initial condition
-def upsample_nearest(vort_coarse, upscale_factor):
-  # Repeat along the row and columns 
-  upsampled_image = jnp.repeat(vort_coarse, upscale_factor, axis=0)
-  upsampled_image = jnp.repeat(upsampled_image, upscale_factor, axis=1)
-  return upsampled_image
-
 vort_init_coarse = pooling_fn(vort_init[jnp.newaxis, ..., jnp.newaxis])[0, ..., 0]
-vort_pred_init = upsample_nearest(vort_init_coarse, filter_size)
+vort_pred_init = zoom(vort_init_coarse, filter_size, order=3)
 
 # (4) setup optimiser
+def update_guess(state_current, opt_state, optimizer):
+  loss, grads = val_and_grad_fn(state_current)
+  update_vec, opt_state = optimizer.update(grads, opt_state, state_current)
+  state_current = optax.apply_updates(state_current, update_vec)
+  return state_current, opt_state, loss
+  
+optimizer = opt_class(lr)
+state_current = vort_pred_init
+
+opt_state = optimizer.init(state_current)
+for _ in range(n_opt_step):
+  state_current, opt_state, loss = update_guess(state_current, opt_state, optimizer)
+  print(loss)
+
+jnp.save(
+  'assim_ex.npy', 
+  jnp.concatenate([vort_init[..., jnp.newaxis],
+                   vort_pred_init[..., jnp.newaxis], 
+                   state_current[..., jnp.newaxis]], axis=-1)
+                   )
