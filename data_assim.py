@@ -31,8 +31,8 @@ velocity_assim = True # set False to assimilate vorticity
 
 # assimilation parameters
 T_unroll = 1.5
-M_substep = 16 # how many stable timesteps in one assimilation timestep
-filter_size = 16
+M_substep = 32 # how many stable timesteps in one assimilation timestep
+filter_size = 32
 
 # hyper parameters + optimizer 
 lr = 0.2
