@@ -100,17 +100,3 @@ def mse_and_traj_vel_coarse(
   squared_errors_traj = (pooling_fn(vel_true_traj) - 
                          pooling_fn(vel_pred_traj)) ** 2
   return alpha * jnp.mean(squared_errors_recon) + (1. - alpha) * jnp.mean(squared_errors_traj)
-
-# following is not over batches -- perhaps move to new file (loss data_assim or just data_assim routines)
-def data_assim_vort(
-    vort_pred: jnp.ndarray,
-    vort_traj_coarse_true: jnp.ndarray,
-    trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
-    pooling_fn: Callable[[jnp.ndarray], jnp.ndarray]
-) -> float:
-  # unroll prediction and coarse
-  vort_traj_pred = trajectory_rollout_fn(vort_pred)
-  vort_traj_coarse_pred = pooling_fn(vort_traj_pred[...,jnp.newaxis])[...,0]
-
-  error_square = (vort_traj_coarse_pred - vort_traj_coarse_true) ** 2
-  return jnp.mean(error_square)

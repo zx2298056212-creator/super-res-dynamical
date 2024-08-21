@@ -242,7 +242,7 @@ def super_res_v0(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=1):
                            n_pad_rows=3, n_pad_cols=3, activation='linear')
   return Model(input_vort, x)
 
-def leray_projection(fields):
+def leray_projection(fields, eps=1e-8):
   batch_size, Nx, Ny, _ = fields.shape
   dx = 2 * jnp.pi / Nx 
   dy = 2 * jnp.pi / Ny
@@ -270,7 +270,7 @@ def leray_projection(fields):
   div_u_rft = ikxu + ikyv
 
   # (2) solve Poisson problem 
-  phi_rft = - div_u_rft / (1e-7 + kx_mesh ** 2 + ky_mesh ** 2)
+  phi_rft = - div_u_rft / (eps + kx_mesh ** 2 + ky_mesh ** 2)
 
   # (3) take grad into channels
   u_correct_ft = -jnp.concatenate([1j * kx_mesh * phi_rft,
