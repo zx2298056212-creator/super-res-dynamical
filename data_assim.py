@@ -24,19 +24,20 @@ Nx = 128
 Ny = 128
 Re = 100.
 
+file_number = 500 # a trajectory from which IC is extracted
+snap_number = 0 # within trajectory
+
 velocity_assim = True # set False to assimilate vorticity
 
 # assimilation parameters
 T_unroll = 1.5
-M_substep = 8 # how many stable timesteps in one assimilation timestep
-filter_size = 8
+M_substep = 16 # how many stable timesteps in one assimilation timestep
+filter_size = 16
 
 # hyper parameters + optimizer 
 lr = 0.2
 n_opt_step = 100
 opt_class = optax.adam
-file_number = 0 # a trajectory from which IC is extracted
-snap_number = 0 # within trajectory
 
 # (0) build grid, stable timestep etc
 grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
