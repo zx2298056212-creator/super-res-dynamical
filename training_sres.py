@@ -36,6 +36,7 @@ train_params = config['training']
 data_loc = general['data_location']
 weight_loc = general['weight_location']
 file_front = general['file_prefix']
+file_end = general['file_end']
 n_files = general['n_files']
 n_fields = general['n_fields']
 loss_name = general['loss_fn']
@@ -67,7 +68,7 @@ max_vel_est = 5.
 dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1. / Re, grid) / 2.
 
 # create downsampled data -- needs cleaning
-files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(n_files)]
+files = [data_loc + file_front + str(n).zfill(4) + file_end for n in range(n_files)]
 vort_snapshots = [np.load(file_name)[::2] for file_name in files]
 print("Note halving the number of raw snapshots in training. ")
 # add axis for channels (=1)
