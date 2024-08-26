@@ -3,6 +3,8 @@
 import os
 os.environ["KERAS_BACKEND"] = "jax"
 
+DATA_SCALE = 4 # quirk of loading bad data -- TODO FIX DATASET
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -25,7 +27,7 @@ def load_config(path):
     return yaml.safe_load(file)
 
 # Load configuration
-config = load_config('config.yaml')
+config = load_config('/mnt/ceph_rbd/ae-dynamical/config.yaml')
 general = config['general']
 grid_params = config['grid']
 train_params = config['training']
@@ -69,8 +71,8 @@ files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(n_files
 vort_snapshots = [np.load(file_name)[::2] for file_name in files]
 print("Note halving the number of raw snapshots in training. ")
 # add axis for channels (=1)
-snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis]
-np.random.shuffle(vort_snapshots)
+snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis] / DATA_SCALE
+np.random.shuffle(snapshots)
 
 if n_fields > 1:
   snapshots = im.compute_vel_traj(snapshots, Lx / Nx, Ly / Ny)
@@ -91,7 +93,7 @@ vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 
 # train a few epochs on standard MSE prior to unrolling
 if n_fields == 1:
-  super_model = models.super_res_vel_v2(Nx // filter_size,
+  super_model = models.super_res_vel_v1(Nx // filter_size,
                                         Ny // filter_size, 
                                         32, 
                                         N_grow=n_grow, 
@@ -102,7 +104,7 @@ if n_fields == 1:
       metrics=[keras.losses.MeanSquaredError()]
   )
 else:
-  super_model = models.super_res_vel_v2(Nx // filter_size,
+  super_model = models.super_res_vel_v1(Nx // filter_size,
                                         Ny // filter_size, 
                                         32, 
                                         N_grow=n_grow, 
@@ -126,6 +128,7 @@ for n in range(n_mse_steps):
 
   history = super_model.fit(snapshots_train_coarse, 
                             snapshots_train, 
+                            batch_size=batch_size,
                             validation_data=(snapshots_val_coarse, snapshots_val), epochs=1)
 
   current_val_loss = history.history['val_loss'][-1]
@@ -194,6 +197,7 @@ for n in range(n_traj_steps):
 
   history = super_model.fit(snapshots_train_coarse, 
                             snapshots_train, 
+                            batch_size=batch_size,
                             validation_data=(snapshots_val_coarse, snapshots_val), 
                             epochs=1)
 
