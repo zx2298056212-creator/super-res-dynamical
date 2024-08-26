@@ -47,7 +47,7 @@ Re = grid_params['Re']
 filter_size = train_params['filter_size']
 n_grow = train_params['n_grow']
 T_unroll = train_params['T_unroll']
-M_substep = train_params['M_substep']
+t_substep = train_params['t_substep']
 batch_size = train_params['batch_size']
 lr_mse = train_params['lr_mse']
 lr_traj = train_params['lr_traj']
@@ -140,7 +140,6 @@ for n in range(n_mse_steps):
 
 # generate a trajectory function (for vorticity)
 dt_stable = np.round(dt_stable, 3)
-t_substep = dt_stable * M_substep
 trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep)
 real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
 

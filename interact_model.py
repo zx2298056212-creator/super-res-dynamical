@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 
 # wrap trajectory function with FFTs to enable physical space -> physical space map
+# traj_fn expects batched inputs
 def real_to_real_traj_fn(vort_phys, traj_fn):
   # FT of space and select first (only) channel
   vort_rft = jnp.fft.rfftn(vort_phys, axes=(1,2))[...,0]
