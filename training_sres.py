@@ -47,7 +47,7 @@ Re = grid_params['Re']
 filter_size = train_params['filter_size']
 n_grow = train_params['n_grow']
 T_unroll = train_params['T_unroll']
-t_substep = train_params['t_substep']
+M_substep = train_params['M_substep']
 batch_size = train_params['batch_size']
 lr_mse = train_params['lr_mse']
 lr_traj = train_params['lr_traj']
@@ -71,8 +71,8 @@ files = [data_loc + file_front + str(n).zfill(4) + '.npy' for n in range(n_files
 vort_snapshots = [np.load(file_name)[::2] for file_name in files]
 print("Note halving the number of raw snapshots in training. ")
 # add axis for channels (=1)
-snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis] / DATA_SCALE 
-np.random.shuffle(vort_snapshots)
+snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis] / DATA_SCALE
+np.random.shuffle(snapshots)
 
 if n_fields > 1:
   snapshots = im.compute_vel_traj(snapshots, Lx / Nx, Ly / Ny)
@@ -93,7 +93,7 @@ vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 
 # train a few epochs on standard MSE prior to unrolling
 if n_fields == 1:
-  super_model = models.super_res_vel_v2(Nx // filter_size,
+  super_model = models.super_res_vel_v1(Nx // filter_size,
                                         Ny // filter_size, 
                                         32, 
                                         N_grow=n_grow, 
@@ -104,7 +104,7 @@ if n_fields == 1:
       metrics=[keras.losses.MeanSquaredError()]
   )
 else:
-  super_model = models.super_res_vel_v2(Nx // filter_size,
+  super_model = models.super_res_vel_v1(Nx // filter_size,
                                         Ny // filter_size, 
                                         32, 
                                         N_grow=n_grow, 
@@ -128,6 +128,7 @@ for n in range(n_mse_steps):
 
   history = super_model.fit(snapshots_train_coarse, 
                             snapshots_train, 
+                            batch_size=batch_size,
                             validation_data=(snapshots_val_coarse, snapshots_val), epochs=1)
 
   current_val_loss = history.history['val_loss'][-1]
@@ -139,6 +140,7 @@ for n in range(n_mse_steps):
 
 # generate a trajectory function (for vorticity)
 dt_stable = np.round(dt_stable, 3)
+t_substep = dt_stable * M_substep
 trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep)
 real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
 
@@ -195,6 +197,7 @@ for n in range(n_traj_steps):
 
   history = super_model.fit(snapshots_train_coarse, 
                             snapshots_train, 
+                            batch_size=batch_size,
                             validation_data=(snapshots_val_coarse, snapshots_val), 
                             epochs=1)
 
