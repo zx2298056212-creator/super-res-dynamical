@@ -4,9 +4,10 @@ general:
   # data_location: '/Users/jpage2/code/jax-cfd-data-gen/Re100test/'
   weight_location: '/mnt/ceph_rbd/ae-dynamical/weights/'
   file_prefix: 'vort_traj.'
-  n_files: 2
+  file_end: '.npy'
+  n_files: 1000
   n_fields: 2 # 1 for vorticity, 2 for velocity
-  loss_fn: 'FINE' # select COARSE or FINE  
+  loss_fn: 'COARSE' # select COARSE or FINE  
 
 grid:
   Nx: 128
@@ -14,14 +15,14 @@ grid:
   Re: 100.0
 
 training:
-  filter_size: 8
-  n_grow: 3
-  T_unroll: 1.0
-  M_substep: 8 # dt_assim = M_substep * dt_stable
-  batch_size: 32
+  filter_size: 16
+  n_grow: 4
+  T_unroll: 1.5
+  M_substep: 16 # dt_assim = M_substep * dt_stable
+  batch_size: 4
   lr_mse: 0.0001
-  lr_traj: 0.00001
-  nval: 5
-  n_mse_steps: 5
-  n_trajectory_steps: 100
-  alpha: 0.5 # split MSE vs traj unroll loss 
+  lr_traj: 0.00005
+  nval: 5000
+  n_mse_steps: 0
+  n_trajectory_steps: 25
+  alpha: 0.0033 # split MSE vs traj unroll loss 
