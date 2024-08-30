@@ -324,10 +324,51 @@ def exponential_filter(fields):
   
   return jnp.fft.irfftn(filtered_field, axes=(1,2))
 
+def circular_filter(fields):
+  """ Based on JAX-CFD spectral code base; apply 2/3 de-aliasing to output field
+      [smooth version; TODO read refs] """
+  batch_size, Nx, Ny, _ = fields.shape
+  dx = 2 * jnp.pi / Nx 
+  dy = 2 * jnp.pi / Ny
+
+  fields_rft = jnp.fft.rfftn(fields, axes=(1,2))
+
+  all_kx = 2 * jnp.pi * jnp.fft.fftfreq(Nx, dx)
+  all_ky = 2 * jnp.pi * jnp.fft.rfftfreq(Ny, dy)
+  
+  kx_mesh, ky_mesh = jnp.meshgrid(all_kx, all_ky)
+  kx_mesh = jnp.repeat(
+    (kx_mesh.T)[jnp.newaxis, ..., jnp.newaxis],
+    repeats=batch_size, 
+    axis=0)
+  ky_mesh = jnp.repeat(
+    (ky_mesh.T)[jnp.newaxis, ..., jnp.newaxis],
+    repeats=batch_size,
+    axis=0)
+  
+  k_all = jnp.sqrt(kx_mesh ** 2 + ky_mesh ** 2)
+  k_max = jnp.max(k_all)
+
+  # following based on JAX-CFD
+  cphi = 0.65 * k_max
+  filterfac = 23.6
+  filter_ = jnp.exp(-filterfac * (k_all - cphi) ** 4.)
+  filter_ = jnp.where(k_all <= cphi, jnp.ones_like(filter_), filter_)
+  
+  filtered_field = fields_rft * filter_
+  return jnp.fft.irfftn(filtered_field, axes=(1,2))
+
 # exp filter layer
 def exp_filter_layer(u_in):
   """" Custom layer to apply exponential filter """
   u_projected = Lambda(exponential_filter, 
+                       output_shape=u_in.shape[1:])(u_in)
+  return u_projected
+
+# circ filter layer
+def circ_filter_layer(u_in):
+  """ Custom layer for de-aliasing filter """
+  u_projected = Lambda(circular_filter,
                        output_shape=u_in.shape[1:])(u_in)
   return u_projected
 
@@ -352,6 +393,7 @@ def super_res_vel_v1(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2
                            n_pad_rows=3, n_pad_cols=3, activation='linear')
   # project out non-solenoidal component
   x = div_free_2D_layer(x)
+  x = exp_filter_layer(x)
   return Model(input_vort, x)
 
 def super_res_vel_v2(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
@@ -383,4 +425,27 @@ def super_res_vel_v2(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2
   if input_channels == 2:
     x = div_free_2D_layer(x)
   x = exp_filter_layer(x)
+  return Model(input_vort, x)
+
+def super_res_vel_v3(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
+  """ As v1 but with circular filter (de-alias).  """
+  input_vort = Input(shape=(Nx_coarse, Ny_coarse, input_channels))
+   
+  # an initial linear layer prior to Residual blocks 
+  x = periodic_convolution(input_vort, N_filters, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  
+  # upsample and apply residual block however many times we need to rescale 
+  # note we are keeping our kernel constant size -- perhaps not ideal
+  # might want to scale this too 
+  for _ in range(N_grow):
+    x = UpSampling2D((2,2))(x)
+    x = residual_block_periodic_conv(x, N_filters, kernel=(4,4),
+                                     n_pad_rows=3, n_pad_cols=3)
+  
+  x = periodic_convolution(x, input_channels, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  # project out non-solenoidal component
+  x = div_free_2D_layer(x)
+  x = circ_filter_layer(x)
   return Model(input_vort, x)
