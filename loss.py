@@ -52,7 +52,7 @@ def mse_and_traj_vel(
     trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vel_to_vort_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vort_to_vel_fn: Callable[[jnp.ndarray], jnp.ndarray], 
-    alpha: float = 1. #0.5
+    alpha: float = 0.5
     ):
   """ Trajectory fn expects real input and gives real output (i.e. fields in physical space)"""
   squared_errors_recon = (vel_true - vel_pred) ** 2
