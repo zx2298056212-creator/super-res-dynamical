@@ -27,7 +27,7 @@ def load_config(path):
     return yaml.safe_load(file)
 
 # Load configuration
-config = load_config('/mnt/ceph_rbd/ae-dynamical/config.yaml')
+config = load_config('config.yaml')
 general = config['general']
 grid_params = config['grid']
 train_params = config['training']
@@ -94,7 +94,7 @@ vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 
 # train a few epochs on standard MSE prior to unrolling
 if n_fields == 1:
-  super_model = models.super_res_vel_v1(Nx // filter_size,
+  super_model = models.super_res_vel_v3(Nx // filter_size,
                                         Ny // filter_size, 
                                         32, 
                                         N_grow=n_grow, 
@@ -105,16 +105,16 @@ if n_fields == 1:
       metrics=[keras.losses.MeanSquaredError()]
   )
 else:
-  super_model = models.super_res_vel_v1(Nx // filter_size,
+  super_model = models.super_res_vel_v3(Nx // filter_size,
                                         Ny // filter_size, 
                                         32, 
                                         N_grow=n_grow, 
                                         input_channels=n_fields)
-  loss_mse = jax.jit(partial(lf.mse_vel_and_vort, 
-                             vel_to_vort_fn=vel_to_vort_fn_batched))
+  #loss_mse = jax.jit(partial(lf.mse_vel_and_vort, 
+  #                           vel_to_vort_fn=vel_to_vort_fn_batched))
   super_model.compile(
       optimizer=keras.optimizers.Adam(learning_rate=lr_mse),
-      loss=loss_mse, 
+      loss='mse', #loss_mse, 
       metrics=[keras.losses.MeanSquaredError()]
   )
 
