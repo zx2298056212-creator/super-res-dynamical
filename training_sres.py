@@ -1,5 +1,4 @@
 # TODO fix to work with either custom training step or tf.data.Dataset for augmentation
-# TODO dynamic training increasing T_unroll <<< then release 
 import os
 os.environ["KERAS_BACKEND"] = "jax"
 
