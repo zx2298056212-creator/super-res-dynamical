@@ -3,8 +3,6 @@
 import os
 os.environ["KERAS_BACKEND"] = "jax"
 
-DATA_SCALE = 4 # quirk of loading bad data -- TODO FIX DATASET
-
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -72,7 +70,7 @@ files = [data_loc + file_front + str(n).zfill(4) + file_end for n in range(n_fil
 vort_snapshots = [np.load(file_name)[::2] for file_name in files]
 print("Note halving the number of raw snapshots in training. ")
 # add axis for channels (=1)
-snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis] / DATA_SCALE
+snapshots = np.concatenate(vort_snapshots, axis=0)[..., np.newaxis] 
 np.random.shuffle(snapshots)
 
 if n_fields > 1:

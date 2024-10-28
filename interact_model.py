@@ -1,11 +1,10 @@
 import jax.numpy as jnp
 
-# wrap trajectory function with FFTs to enable physical space -> physical space map
-# traj_fn expects batched inputs
 def real_to_real_traj_fn(vort_phys, traj_fn):
   # FT of space and select first (only) channel
   vort_rft = jnp.fft.rfftn(vort_phys, axes=(1,2))[...,0]
   _, traj_rft = traj_fn(vort_rft)
+
   # axes for FT move back because we now also have time dimension; add channel
   traj_phys = jnp.fft.irfftn(traj_rft, axes=(2,3))[...,jnp.newaxis]
   return traj_phys
@@ -54,7 +53,6 @@ def compute_vort_traj(
   vort_traj = jnp.fft.irfftn(vort_traj_rft, axes=(1,2))
   return vort_traj[..., jnp.newaxis]
 
-# TODO rename OMEGA because these work on any Nchannels
 def average_pool_trajectory(omega_traj, pool_width, pool_height):
   trajectory_length, Nx, Ny, Nchannels = omega_traj.shape
   assert Nx % pool_width == 0
