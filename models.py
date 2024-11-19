@@ -305,3 +305,31 @@ def super_res_vel_v3(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2
   x = div_free_2D_layer(x)
   x = circ_filter_layer(x)
   return Model(input_vort, x)
+
+def super_res_vel_v3_traj(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
+  """ Modify v3 to deal with trajectory input -- but take only first entry """
+  # add "None" for trajectory input 
+  input_vort = Input(shape=(None, Nx_coarse, Ny_coarse, input_channels))  
+
+  # Slice the input to use only the first time step.
+  # Lambda layer to extract the first time step. We assume the first time step is along axis 1.
+  first_step = Lambda(lambda x: x[:, 0, :, :, :])(input_vort)
+
+  # an initial linear layer prior to Residual blocks 
+  x = periodic_convolution(first_step, N_filters, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  
+  # upsample and apply residual block however many times we need to rescale 
+  # note we are keeping our kernel constant size -- perhaps not ideal
+  # might want to scale this too 
+  for _ in range(N_grow):
+    x = UpSampling2D((2,2))(x)
+    x = residual_block_periodic_conv(x, N_filters, kernel=(4,4),
+                                     n_pad_rows=3, n_pad_cols=3)
+  
+  x = periodic_convolution(x, input_channels, kernel=(4, 4),
+                           n_pad_rows=3, n_pad_cols=3, activation='linear')
+  # project out non-solenoidal component
+  x = div_free_2D_layer(x)
+  x = circ_filter_layer(x)
+  return Model(input_vort, x)
