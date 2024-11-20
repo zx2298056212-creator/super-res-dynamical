@@ -1,27 +1,28 @@
 # config.yaml
 general:
-  data_location: '/mnt/ceph_rbd/ae-dynamical/Re100test/'
+  data_location: '/mnt/ceph_rbd/jax-cfd-data-gen/Re1000/'
+  # data_location: '/Users/jpage2/code/jax-cfd-data-gen/Re100test/'
   weight_location: '/mnt/ceph_rbd/ae-dynamical/weights/'
-  file_prefix: 'vort_traj.'
-  file_end: '.npy'
-  n_files: 1000
+  file_prefix: 'vort_traj_Re1000L2pi_'
+  file_end: '_0.npy'
+  n_files: 65
   n_fields: 2 # 1 for vorticity, 2 for velocity
   loss_fn: 'COARSE' # select COARSE or FINE  
 
 grid:
-  Nx: 128
-  Ny: 128
-  Re: 100.0
+  Nx: 512
+  Ny: 512
+  Re: 1000.0
 
 training:
-  filter_size: 16
-  n_grow: 4
-  T_unroll: 1.5
-  M_substep: 16 # dt_assim = M_substep * dt_stable
-  batch_size: 4
+  filter_size: 32
+  n_grow: 5
+  T_unroll: 1.0
+  M_substep: 32 # dt_assim = M_substep * dt_stable
+  batch_size: 16
   lr_mse: 0.0001
-  lr_traj: 0.00005
-  nval: 5000
+  lr_traj: 0.0001
+  nval: 250
   n_mse_steps: 0
-  n_trajectory_steps: 25
-  alpha: 0.0033 # split MSE vs traj unroll loss 
+  n_trajectory_steps: 50
+  alpha: 0.001 # split MSE vs traj unroll loss 

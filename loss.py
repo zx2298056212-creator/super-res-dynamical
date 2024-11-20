@@ -2,8 +2,8 @@ import jax.numpy as jnp
 from typing import Callable
 
 def mse_vel_and_vort(
-    vel_pred: jnp.ndarray,
     vel_true: jnp.ndarray,
+    vel_pred: jnp.ndarray,
     vel_to_vort_fn: Callable[[jnp.ndarray], jnp.ndarray]
   ):
   vort_pred = vel_to_vort_fn(vel_pred[:, jnp.newaxis, ...])[:,0,...]
@@ -14,8 +14,8 @@ def mse_vel_and_vort(
   return 0.5 * jnp.mean(vel_error) + 0.5 * jnp.mean(vort_error)
 
 def mse_and_traj(
-    vort_pred: jnp.ndarray, 
     vort_true: jnp.ndarray, 
+    vort_pred: jnp.ndarray, 
     trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
     alpha: float = 0.5
     ):
@@ -29,8 +29,8 @@ def mse_and_traj(
   return alpha * jnp.mean(squared_errors_recon) + (1. - alpha) * jnp.mean(squared_errors_traj)
 
 def mse_and_traj_coarse(
-    vort_pred: jnp.ndarray, 
     vort_true: jnp.ndarray, 
+    vort_pred: jnp.ndarray, 
     trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
     pooling_fn: Callable[[jnp.ndarray], jnp.ndarray],
     alpha: float = 0.5
@@ -47,8 +47,8 @@ def mse_and_traj_coarse(
   return alpha * jnp.mean(squared_errors_recon) + (1. - alpha) * jnp.mean(squared_errors_traj)
 
 def mse_and_traj_vel(
-    vel_pred: jnp.ndarray, 
     vel_true: jnp.ndarray, 
+    vel_pred: jnp.ndarray, 
     trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vel_to_vort_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vort_to_vel_fn: Callable[[jnp.ndarray], jnp.ndarray], 
@@ -73,8 +73,8 @@ def mse_and_traj_vel(
   return alpha * jnp.mean(squared_errors_recon) + (1. - alpha) * jnp.mean(squared_errors_traj)
 
 def mse_and_traj_vel_coarse(
-    vel_pred: jnp.ndarray, 
     vel_true: jnp.ndarray, 
+    vel_pred: jnp.ndarray, 
     trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vel_to_vort_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vort_to_vel_fn: Callable[[jnp.ndarray], jnp.ndarray], 
@@ -102,9 +102,11 @@ def mse_and_traj_vel_coarse(
   return alpha * jnp.mean(squared_errors_recon) + (1. - alpha) * jnp.mean(squared_errors_traj)
 
 
+# need some trickery so that y_true and y_pred appear to have the same shape ... 
+# fudge to work with keras model.fit method (TODO JP custom training loop)
 def traj_vel_coarse_noise(
-    vel_pred: jnp.ndarray, 
     vel_true_traj: jnp.ndarray, 
+    vel_pred_traj: jnp.ndarray, # note has the shape of a trajectory, but really is copies of single snapshot
     trajectory_rollout_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vel_to_vort_fn: Callable[[jnp.ndarray], jnp.ndarray],
     vort_to_vel_fn: Callable[[jnp.ndarray], jnp.ndarray], 
@@ -113,6 +115,9 @@ def traj_vel_coarse_noise(
   """  Loads in full trajectories (with noise) for comparison 
        vel_true_traj.shape = (batch_size, time, Nx, Ny, 2)
        vel_pred.shape = (batch_size, Nx, Ny, 2) """
+  # deal with awkward data-structure: extract single snapshot 
+  vel_pred = vel_pred_traj[:, 0, ...]
+  vel_true_traj_coarse = pooling_fn(vel_true_traj)
   
   # (1) need to first convert vel to vort
   vort_pred = vel_to_vort_fn(vel_pred[:, jnp.newaxis, ...])[:,0,...]
@@ -122,7 +127,8 @@ def traj_vel_coarse_noise(
 
   # (3) back to vel -- note dimensionality mismatch, now for trajs
   vel_pred_traj = vort_to_vel_fn(pred_traj)
+  vel_pred_traj_coarse = pooling_fn(vel_pred_traj)
 
-  squared_errors_traj = (pooling_fn(vel_true_traj) - 
-                         pooling_fn(vel_pred_traj)) ** 2
+  squared_errors_traj = (vel_true_traj_coarse - 
+                         vel_pred_traj_coarse) ** 2
   return jnp.mean(squared_errors_traj)

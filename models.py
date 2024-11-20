@@ -306,10 +306,10 @@ def super_res_vel_v3(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2
   x = circ_filter_layer(x)
   return Model(input_vort, x)
 
-def super_res_vel_v3_traj(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_channels=2):
+def super_res_vel_v3_traj(Nx_coarse, Ny_coarse, Nt, N_filters, N_grow=4, input_channels=2):
   """ Modify v3 to deal with trajectory input -- but take only first entry """
   # add "None" for trajectory input 
-  input_vort = Input(shape=(None, Nx_coarse, Ny_coarse, input_channels))  
+  input_vort = Input(shape=(Nt, Nx_coarse, Ny_coarse, input_channels))  
 
   # Slice the input to use only the first time step.
   # Lambda layer to extract the first time step. We assume the first time step is along axis 1.
@@ -332,4 +332,12 @@ def super_res_vel_v3_traj(Nx_coarse, Ny_coarse, N_filters, N_grow=4, input_chann
   # project out non-solenoidal component
   x = div_free_2D_layer(x)
   x = circ_filter_layer(x)
-  return Model(input_vort, x)
+
+  # now artificially copy the output so that the shape matches the input (a trajectory)
+  def repeat_time(x, time_steps):
+    return jnp.repeat(x[:, jnp.newaxis, ...], time_steps, axis=1)
+
+  repeat_shape = (Nt, int(Nx_coarse * 2 ** N_grow), int(Ny_coarse * 2 ** N_grow), input_channels)
+  output_traj = Lambda(repeat_time, arguments={'time_steps': Nt}, output_shape=repeat_shape)(x)
+
+  return Model(input_vort, output_traj)

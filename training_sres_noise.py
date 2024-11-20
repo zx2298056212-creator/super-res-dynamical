@@ -25,11 +25,11 @@ def load_config(path):
   with open(path, 'r') as file:
     return yaml.safe_load(file)
 
-data_loc = '/mnt/ceph_rbd/ae-dynamical/Re100test/'
+data_loc = '/mnt/ceph_rbd/jax-cfd-data-gen/Re1000/'
 weight_loc = '/mnt/ceph_rbd/ae-dynamical/weights/'
-file_front = 'vort_traj.'
-file_end = '.npy'
-n_files = 1000
+file_front = 'vort_revi_traj_Re1000L2pi_'
+file_end = '_0.npy'
+n_files = 65
 n_fields = 2 # 1 for vorticity, 2 for velocity
 
 Nx = 512
@@ -59,13 +59,14 @@ max_vel_est = 5.
 dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1. / Re, grid) / 2.
 
 # create downsampled data -- needs cleaning
-files = [data_loc + file_front + str(n).zfill(4) + file_end for n in range(n_files)]
+files = [data_loc + file_front + str(n).zfill(2) + file_end for n in range(n_files)]
 
 # verify shape
 vort_trajs = np.array([np.load(file_name) for file_name in files])[..., np.newaxis] # (traj, Nt, Nx, Ny, 1)
 vel_trajs = np.array([
   im.compute_vel_traj(
     np.load(file_name)[..., np.newaxis],
+    Lx / Nx,
     Ly / Ny)  
     for file_name in files
     ])
@@ -94,12 +95,6 @@ vort_to_vel_fn_batched = jax.vmap(vort_to_vel_fn)
 # TODO JP batch the symmetry operations 
 
 
-super_model = models.super_res_vel_v3_traj(Nx // filter_size,
-                                           Ny // filter_size, 
-                                           32, 
-                                           N_grow=n_grow, 
-                                           input_channels=n_fields)
-
 # min val loss init
 min_val_loss = np.inf
 
@@ -107,9 +102,19 @@ min_val_loss = np.inf
 # verify that this matches the training data!
 dt_stable = np.round(dt_stable, 3)
 t_substep = dt_stable * M_substep
+N_steps = int(T_unroll / t_substep)
 print("dt_stable:", dt_stable, "T substep:", t_substep)
 trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep)
 real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
+
+# build model which takes trajectory inputs
+super_model = models.super_res_vel_v3_traj(Nx // filter_size,
+                                           Ny // filter_size, 
+                                           N_steps,
+                                           32, 
+                                           N_grow=n_grow, 
+                                           input_channels=n_fields)
+
 
 
 loss_fn = jax.jit(partial(lf.traj_vel_coarse_noise, 
