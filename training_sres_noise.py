@@ -21,20 +21,19 @@ import loss as lf
 import interact_model as im
 import sym_augment as sa
 
-def load_config(path):
-  with open(path, 'r') as file:
-    return yaml.safe_load(file)
 
 data_loc = '/mnt/ceph_rbd/jax-cfd-data-gen/Re1000/'
 weight_loc = '/mnt/ceph_rbd/ae-dynamical/weights/'
 file_front = 'vort_revi_traj_Re1000L2pi_'
 file_end = '_0.npy'
-n_files = 65
+n_files = 500
 n_fields = 2 # 1 for vorticity, 2 for velocity
 
 Nx = 512
 Ny = 512
 Re = 1000.0
+
+noise_level = 0.1
 
 # network hyp
 filter_size = 32
@@ -45,8 +44,8 @@ M_substep = 32
 # training hyp
 batch_size = 16
 lr_traj = 1e-4
-nval = 10
-n_traj_steps = 50
+nval = 25
+n_traj_steps = 200
 
 # setup problem and create grid
 Lx = 2 * jnp.pi
@@ -136,10 +135,20 @@ for n in range(n_traj_steps):
   # snapshots_train = np.array([sa.translate_x(sa.shift_reflect_y(field)) for field in snapshots_train])
   # snapshots_train_coarse = im.coarse_pool_trajectory(snapshots_train, filter_size, filter_size)
 
-  history = super_model.fit(traj_train_coarse, 
-                            traj_train, 
+  traj_train_noisy = traj_train + np.random.normal(0, noise_level * np.abs(traj_train))
+  traj_val_noisy =  traj_val + np.random.normal(0, noise_level * np.abs(traj_val))
+
+  # now coarse-grain the noisy fields
+  traj_train_coarse = pooling_fn_batched(traj_train_noisy)
+  traj_val_coarse = pooling_fn_batched(traj_val_noisy)
+
+  ## JP as an alternative we could follow the previous approach, apply symmetry transforms and then re-generate the training set 
+  ## at each iteration? Can we call the batched trajectory fn on O(30k) snapshots?
+
+  history = super_model.fit(traj_train_coarse,
+                            traj_train_noisy,
                             batch_size=batch_size,
-                            validation_data=(traj_val_coarse, traj_val), 
+                            validation_data=(traj_val_coarse, traj_val_noisy),
                             epochs=1)
 
   current_val_loss = history.history['val_loss'][-1]
