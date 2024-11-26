@@ -104,7 +104,7 @@ dt_stable = np.round(dt_stable, 3)
 t_substep = dt_stable * M_substep
 N_steps = int(T_unroll / t_substep)
 print("dt_stable:", dt_stable, "T substep:", t_substep)
-trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep)
+trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep, damping=0.1)
 real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
 
 # build model which takes trajectory inputs

@@ -36,7 +36,8 @@ class Assimilator:
       filter_size: int,
       opt_class, #: optax.Optimizer,
       learning_rate: float,
-      vel_assim: bool=True
+      vel_assim: bool=True,
+      damping: float=0.1 # linear damping
   ):
     # problem and grid
     self.Re = Re
@@ -64,7 +65,8 @@ class Assimilator:
                                               self.T_unroll + 1e-2, 
                                               self.dt_stable, 
                                               self.grid, 
-                                              t_substep=self.t_substep)
+                                              t_substep=self.t_substep,
+                                              damping=damping)
     
     self.real_traj_fn = jax.jit(
       partial(vort_traj_fn_wrapper, 

@@ -64,6 +64,14 @@ grid = cfd.grids.Grid((Nx, Ny), domain=((0, Lx), (0, Ly)))
 max_vel_est = 5.
 dt_stable = cfd.equations.stable_time_step(max_vel_est, 0.5, 1. / Re, grid) / 2.
 
+# set damping based on Re (TODO change to be input)
+if Re == 100:
+  damping = 0.
+elif Re == 1000:
+  damping = 0.1 
+else:
+  raise ValueError("Damping must be specified for specific Re (to be passed in config in a future version)")
+
 # create downsampled data -- needs cleaning
 files = [data_loc + file_front + str(n).zfill(4) + file_end for n in range(n_files)]
 vort_snapshots = [np.load(file_name)[::2] for file_name in files]
@@ -139,7 +147,7 @@ for n in range(n_mse_steps):
 # generate a trajectory function (for vorticity)
 dt_stable = np.round(dt_stable, 3)
 t_substep = dt_stable * M_substep
-trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep)
+trajectory_fn = ts.generate_trajectory_fn(Re, T_unroll + 1e-2, dt_stable, grid, t_substep=t_substep, damping=damping)
 real_traj_fn = partial(im.real_to_real_traj_fn, traj_fn=jax.vmap(trajectory_fn))
 
 # now batch the pooling fn
