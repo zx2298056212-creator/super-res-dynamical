@@ -23,7 +23,7 @@ def kolmogorov_ck13_step(
   return spectral.equations.NavierStokes2D(
       viscosity = 1. / Re,
       grid = grid,
-      drag = 0.1, 
+      drag = damping, 
       smooth = smooth,
       forcing_fn = forcing_fn)
 
