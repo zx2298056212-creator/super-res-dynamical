@@ -363,3 +363,30 @@ def super_res_vel_v3_traj(Nx_coarse, Ny_coarse, Nt, N_filters, N_grow=4, input_c
   output_traj = Lambda(repeat_time, arguments={'time_steps': Nt}, output_shape=repeat_shape)(x)
 
   return Model(input_vort, output_traj)
+
+def super_res_taira_leray():
+  """ Create DSC/MS model from Fukami, Fukagata & Taira,
+      for the sake of illutration we insist: 
+      Nx = 512 
+      Ny = 512 
+     
+      coarse_graining = 32 so
+      Nx_coarse = 16 
+      Ny_coarse = 16
+  """ 
+
+  pass 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
