@@ -380,7 +380,7 @@ def super_res_taira_leray(Nx_coarse, Ny_coarse):
 
   # looking at the original JFM 2019 (Fukami, Fukagata, Taira) 
   # seems that the input image is first upsampled to the target size for all subsequent processing... 
-  input_vel_upsampled = UpSampling2D((32, 32))(input_vel)
+  input_vel_upsampled = UpSampling2D((32, 32), interpolation='bicubic')(input_vel)
 
   down_1 = MaxPooling2D((8,8),padding='same')(input_vel_upsampled)
   x1 = periodic_convolution(down_1, 32, kernel=(3,3),
@@ -403,7 +403,7 @@ def super_res_taira_leray(Nx_coarse, Ny_coarse):
                             n_pad_rows=2, n_pad_cols=2, activation='gelu')
   x3 = periodic_convolution(x3, 32, kernel=(3,3),
                             n_pad_rows=2, n_pad_cols=2, activation='gelu')
-  x3 = UpSampling2D((2,2))(x2)
+  x3 = UpSampling2D((2,2))(x3)
 
   x4 = Concatenate(axis=-1)([x3, input_vel_upsampled])
   x4 = periodic_convolution(x4, 32, kernel=(3,3),
@@ -412,7 +412,6 @@ def super_res_taira_leray(Nx_coarse, Ny_coarse):
                             n_pad_rows=2, n_pad_cols=2, activation='gelu')
 
   #Multi-scale model (Du et al., 2018)
-  layer_1 = Conv2D(16, (5,5),activation='relu', padding='same')(input_vel)
   layer_1 = periodic_convolution(input_vel_upsampled, 16, kernel=(5,5),
                                  n_pad_rows=4, n_pad_cols=4, activation='gelu')
   x1m = periodic_convolution(layer_1, 8, kernel=(5,5),
@@ -444,6 +443,98 @@ def super_res_taira_leray(Nx_coarse, Ny_coarse):
   x_final = Concatenate(axis=-1)([x4, x4m])
   x_final = periodic_convolution(x_final, 2, kernel=(3,3),
                                  n_pad_rows=2, n_pad_cols=2, activation='linear')
+
+  x_final = div_free_2D_layer(x_final)
+  x_final = circ_filter_layer(x_final)
+  return Model(input_vel, x_final)
+
+
+def super_res_taira_v2_leray(Nx_coarse, Ny_coarse):
+  """ Create DSC/MS model from Fukami, Fukagata & Taira,
+      for the sake of illutration we insist: 
+     
+      coarse_graining = 32 so
+      Nx_coarse = Nx // 32 
+      Ny_coarse = Ny // 32
+
+      Make changes to avoid upsampling the image to target resolution at input 
+      Difference is we now use the output of the MS/SC model as input to the parallel filters,
+      with a residual connection
+  """ 
+  # we first build the "skip connection" component
+  # we follow the Fukami achitecture "in spirit" because we are doing more severe upsampling
+  input_vel = Input(shape=(Nx_coarse, Ny_coarse, 2))
+
+  # DSC
+  down_1 = UpSampling2D((2,2))(input_vel)
+  x1 = periodic_convolution(down_1, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x1 = periodic_convolution(x1, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x1 = UpSampling2D((2,2))(x1)
+
+  down_2 = UpSampling2D((2,2))(down_1)
+  x2 = Concatenate(axis=-1)([x1, down_2]) 
+  x2 = periodic_convolution(x2, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x2 = periodic_convolution(x2, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x2 = UpSampling2D((2,2))(x2)
+
+  down_3 = UpSampling2D((2,2))(down_2)
+  x3 = Concatenate(axis=-1)([x2, down_3]) 
+  x3 = periodic_convolution(x3, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x3 = periodic_convolution(x3, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x3 = UpSampling2D((2,2))(x3)
+
+  down_4 = UpSampling2D((2,2))(down_3)
+  x4 = Concatenate(axis=-1)([x3, down_4]) 
+  x4 = periodic_convolution(x4, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x4 = periodic_convolution(x4, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x4 = UpSampling2D((2,2))(x4)
+
+  x4 = periodic_convolution(x4, 32, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  # this bit is now a velocity field which we will iteratively refine
+  x4 = periodic_convolution(x4, 2, kernel=(4,4),
+                            n_pad_rows=3, n_pad_cols=3, activation='linear')
+
+  #Multi-scale model (Du et al., 2018)
+  layer_1 = periodic_convolution(x4, 16, kernel=(4,4),
+                                 n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x1m = periodic_convolution(layer_1, 8, kernel=(4,4),
+                             n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  x1m = periodic_convolution(x1m, 8, kernel=(4,4),
+                             n_pad_rows=3, n_pad_cols=3, activation='gelu')
+  
+  layer_2 = periodic_convolution(x4, 16, kernel=(6,6),
+                                 n_pad_rows=5, n_pad_cols=5, activation='gelu')
+  x2m = periodic_convolution(layer_2, 8, kernel=(6,6),
+                             n_pad_rows=5, n_pad_cols=5, activation='gelu')
+  x2m = periodic_convolution(x2m, 8, kernel=(6,6),
+                             n_pad_rows=5, n_pad_cols=5, activation='gelu')
+  
+  layer_3 = periodic_convolution(x4, 16, kernel=(8,8),
+                                 n_pad_rows=7, n_pad_cols=7, activation='gelu')
+  x3m = periodic_convolution(layer_3, 8, kernel=(8,8),
+                             n_pad_rows=7, n_pad_cols=7, activation='gelu')
+  x3m = periodic_convolution(x3m, 8, kernel=(8,8),
+                             n_pad_rows=7, n_pad_cols=7, activation='gelu')
+
+  x_add = Concatenate(axis=-1)([x1m, x2m, x3m])
+  x4m = periodic_convolution(x_add, 8, kernel=(7,7),
+                             n_pad_rows=6, n_pad_cols=6, activation='gelu')
+  x4m = periodic_convolution(x4m, 3, kernel=(5,5),
+                             n_pad_rows=4, n_pad_cols=4, activation='gelu')
+
+  # join both models ... 
+  x_final = Concatenate(axis=-1)([x4, x4m])
+  x_final = periodic_convolution(x_final, 2, kernel=(4,4),
+                                 n_pad_rows=3, n_pad_cols=3, activation='linear')
 
   x_final = div_free_2D_layer(x_final)
   x_final = circ_filter_layer(x_final)
