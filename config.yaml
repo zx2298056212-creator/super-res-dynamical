@@ -17,8 +17,10 @@ grid:
 training:
   filter_size: 32
   n_grow: 5
-  T_unroll: 1.0
-  M_substep: 32 # dt_assim = M_substep * dt_stable
+  T_unroll: 1.0 
+  #duration of prediction
+  M_substep: 32 # dt_assim = M_substep * dt_stable 
+  #Controls the frequency of supervision/assimilation during unrolling. Larger values mean less frequent updates,
   batch_size: 16
   lr_mse: 0.0001
   lr_traj: 0.0001
