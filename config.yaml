@@ -22,8 +22,8 @@ training:
   M_substep: 32 # dt_assim = M_substep * dt_stable 
   #Controls the frequency of supervision/assimilation during unrolling. Larger values mean less frequent updates,
   batch_size: 16
-  lr_mse: 0.0001
-  lr_traj: 0.0001
+  lr_mse: 0.0001 #intermediate mse errors correlation
+  lr_traj: 0.0001 #minimizing the dynamic unroll time
   nval: 250
   n_mse_steps: 0
   n_trajectory_steps: 50
